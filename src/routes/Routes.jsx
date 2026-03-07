@@ -1,7 +1,9 @@
 import { createBrowserRouter } from 'react-router-dom';
 import Root from '../layout/Root';
 
-import HomePage from '../pages/HomePage';
+// Added this missing import
+import Homepage from '../pages/Homepage'; 
+
 import About from '../pages/About';
 import Login from '../pages/Login';
 import Register from '../pages/Register';
@@ -11,7 +13,6 @@ import Sale from '../pages/Sale';
 import Categories from '../pages/Categories';
 import NewArrivals from '../pages/NewArrivals';
 import OrderTracking from '../component/OrderTracking';
-
 import CartPage from '../pages/CartPage';
 import PaymentPage from '../pages/PaymentPage';
 import Dashboard from '../Dashboard';
@@ -24,11 +25,11 @@ const Routes = createBrowserRouter([
     {
         path: "/",
         element: <Root />,
-        errorElement:<ErrorPage></ErrorPage>,
+        errorElement: <ErrorPage />,
         children: [
             {
                 path: "/",
-                element: <HomePage />
+                element: <Homepage /> // ✅ Fixed: Closed the component and object
             },
             {
                 path: "/shop",
@@ -50,7 +51,6 @@ const Routes = createBrowserRouter([
                 path: "/about",
                 element: <About />
             },
-            // ✅ FIX: Added :orderId to handle dynamic tracking links
             {
                 path: "/ordertracking/:orderId", 
                 element: <OrderTracking />
@@ -65,7 +65,7 @@ const Routes = createBrowserRouter([
             },
             {
                 path: "/dashboard",
-                element: <Dashboard></Dashboard>
+                element: <Dashboard />
             },
             {
                 path: "/paymentpage",
@@ -85,19 +85,16 @@ const Routes = createBrowserRouter([
             },
             {
                 path: "/shippingpolicy",
-                element: <ShippingPolicy></ShippingPolicy>
+                element: <ShippingPolicy />
             },
-           
             {
                 path: "/returnpolicy",
-                element: <ReturnPolicy></ReturnPolicy>
+                element: <ReturnPolicy />
             },
-           
             {
                 path: "/faq",
-                element:<FAQ></FAQ>
+                element: <FAQ />
             },
-           
         ]
     }
 ]);

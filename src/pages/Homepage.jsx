@@ -300,3 +300,4 @@ const CartDrawer = ({ isOpen, onClose, cartItems, remove, isDarkMode }) => (
 );
 
 export default Homepage;
+
