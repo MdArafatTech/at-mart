@@ -1,6 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import Root from '../layout/Root';
-import Errorpage from '../pages/Errorpage';
+
 import HomePage from '../pages/HomePage';
 import About from '../pages/About';
 import Login from '../pages/Login';
@@ -18,12 +18,13 @@ import Dashboard from '../Dashboard';
 import ShippingPolicy from '../component/ShippingPolicy';
 import ReturnPolicy from '../component/ReturnPolicy';
 import FAQ from '../component/FAQ';
+import ErrorPage from '../pages/Errorpage';
 
 const Routes = createBrowserRouter([
     {
         path: "/",
         element: <Root />,
-        errorElement: <Errorpage />,
+        errorElement:<ErrorPage></ErrorPage>,
         children: [
             {
                 path: "/",
