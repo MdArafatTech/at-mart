@@ -1,0 +1,54 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+@theme {
+  --color-brand: #f59e0b; /* amber-500 */
+}
+
+/* Tailwind v4 Dark Mode Strategy */
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+}
+
+/* Syncing with DaisyUI's dark theme */
+[data-theme="dark"] {
+  --background: #121212;
+  --foreground: #f1f1f1;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: 100vh;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/* Custom Swiper Styles */
+.swiper-button-next, .swiper-button-prev {
+  color: #f59e0b !important; /* Amber-500 */
+  transform: scale(0.7);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 30px;
+  border-radius: 50%;
+  backdrop-filter: blur(4px);
+}
+
+.swiper-pagination-bullet-active {
+  background: #f59e0b !important;
+  width: 25px !important;
+  border-radius: 5px !important;
+}
