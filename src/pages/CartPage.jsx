@@ -234,61 +234,94 @@
 
 
 
-
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useCart } from "../context/CartContext";
-// ✅ Logic Fix: Using your specific AuthProvider hook
 import { useAuth } from "../provider/AuthProvider"; 
+import { db } from "../firebase/Firebase"; // Ensure this path is correct
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { 
-  FaTrash, FaPlus, FaMinus, FaArrowLeft, FaShieldAlt, 
-  FaTruck, FaFileInvoiceDollar, FaShoppingCart, FaCheckCircle, 
-  FaTicketAlt, FaLock 
+  FaTrash, FaPlus, FaMinus, FaShieldAlt, 
+  FaFileInvoiceDollar, FaShoppingCart, FaLock, FaSync, FaCloudUploadAlt
 } from "react-icons/fa";
 
 const CartPage = () => {
   const { isDarkMode } = useTheme();
-  const { cartItems, removeFromCart, addToCart, clearCart, discount, applyCoupon } = useCart();
-  
-  // ✅ AUTH LOGIC: Pulling directly from your AuthProvider.js
+  const { cartItems, removeFromCart, clearCart, discount } = useCart();
   const { currentUser } = useAuth();
-  const isLoggedIn = !!currentUser; // Logic now reacts instantly to Firebase status
+  const isLoggedIn = !!currentUser;
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Local state for coupon input
-  const [couponInput, setCouponInput] = useState("");
-  const [couponStatus, setCouponStatus] = useState({ msg: "", isError: false });
+  // Local state for cloud sync
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // ─── CALCULATIONS ──────────────────────────────────────────
-  const subtotal = cartItems.reduce((acc, item) => acc + item.price, 0);
+  // --- CALCULATIONS ---
+  const subtotal = cartItems.reduce((acc, item) => acc + (item.price || 0), 0);
   const discountAmount = subtotal * (discount || 0); 
   const discountedSubtotal = subtotal - discountAmount;
   const tax = discountedSubtotal * 0.08; 
-  const shipping = subtotal > 500 ? 0 : 25; 
+  const shipping = subtotal > 500 || subtotal === 0 ? 0 : 25; 
   const total = discountedSubtotal + tax + shipping;
 
-  const handleApplyCoupon = () => {
-    if (!couponInput) return;
-    const result = applyCoupon(couponInput); 
-    setCouponStatus({ 
-      msg: result.success ? "PROTOCOL ACCEPTED: -15%" : "INVALID ACCESS KEY", 
-      isError: !result.success 
-    });
-  };
-
-  const handleCheckout = () => {
-    if (isLoggedIn) {
-      navigate("/paymentpage");
-    } else {
-      // Passes the current path so Login.js knows to send them back here
+  // --- FIREBASE CHECKOUT LOGIC ---
+  const handleCheckout = async () => {
+    if (!isLoggedIn) {
       navigate("/login", { state: { from: location.pathname } });
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
+      // 1. Sanitize Payload (Prevents the 'undefined' Error)
+      const orderPayload = {
+        userId: currentUser.uid,
+        userEmail: currentUser.email || "anonymous",
+        userName: currentUser.displayName || "Agent",
+        items: cartItems.map(item => ({
+          id: item.id || item.cartId || "unidentified_node",
+          name: item.name || "Unknown Hardware",
+          price: Number(item.price) || 0,
+          img: item.img || "📦", // Fallback to emoji if img is undefined
+          tech: item.tech || "Standard Specs"
+        })),
+        summary: {
+          subtotal: Number(subtotal.toFixed(2)),
+          tax: Number(tax.toFixed(2)),
+          shipping: Number(shipping.toFixed(2)),
+          total: Number(total.toFixed(2))
+        },
+        status: "pending",
+        createdAt: serverTimestamp() // Official Firestore Timestamp
+      };
+
+      // 2. Deploy to Firestore
+      const docRef = await addDoc(collection(db, "orders"), orderPayload);
+
+      // 3. Clear Cart and Redirect
+      setTimeout(() => {
+        setIsSyncing(false);
+        clearCart();
+        navigate("/paymentpage", { 
+          state: { 
+            orderId: docRef.id,
+            orderData: orderPayload 
+          } 
+        });
+      }, 1000);
+
+    } catch (error) {
+      console.error("DEPLOYMENT FAILURE:", error);
+      alert("Cloud Sync Error: Check your connection or database permissions.");
+      setIsSyncing(false);
     }
   };
 
+  // --- EMPTY CART VIEW ---
   if (cartItems.length === 0) {
     return (
       <div className={`min-h-screen pt-40 flex flex-col items-center justify-center px-6 transition-colors ${
@@ -298,7 +331,7 @@ const CartPage = () => {
           <div className="text-9xl opacity-10 mb-8">🛒</div>
           <h2 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Arsenal Empty</h2>
           <p className="opacity-40 font-bold uppercase text-[10px] tracking-[0.3em] mb-8">No hardware nodes detected in current loadout.</p>
-          <Link to="/categories" className="bg-amber-500 text-black px-10 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-transform inline-block">
+          <Link to="/" className="bg-amber-500 text-black px-10 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-transform inline-block">
             Return to Directory
           </Link>
         </motion.div>
@@ -336,6 +369,7 @@ const CartPage = () => {
               {cartItems.map((item) => (
                 <motion.div 
                   key={item.cartId}
+                  layout
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
@@ -343,96 +377,79 @@ const CartPage = () => {
                     isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white border-slate-200 shadow-lg"
                   }`}
                 >
-                  <div className="text-6xl bg-slate-500/5 p-6 rounded-3xl">{item.img}</div>
+                  <div className="text-6xl bg-slate-500/5 p-6 rounded-3xl h-24 w-24 flex items-center justify-center">
+                    {item.img || "📦"}
+                  </div>
                   
                   <div className="flex-1 text-center sm:text-left">
                     <h3 className="text-lg font-black uppercase italic tracking-tighter">{item.name}</h3>
                     <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">{item.tech || "Premium Node"}</p>
                     <div className="mt-4 flex items-center justify-center sm:justify-start gap-4">
                        <span className="text-amber-500 font-black italic text-xl">${item.price}</span>
-                       <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase rounded-full">Secure Node</span>
+                       <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase rounded-full flex items-center gap-1">
+                         <FaShieldAlt size={8}/> Verified Node
+                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6 border-l border-slate-800/10 pl-6">
-                    <div className="flex items-center gap-4 bg-slate-500/10 rounded-xl p-2">
-                      <button onClick={() => removeFromCart(item.cartId)} className="p-2 hover:text-rose-500 cursor-pointer"><FaMinus size={10} /></button>
-                      <span className="font-black text-xs">01</span>
-                      <button onClick={() => addToCart(item)} className="p-2 hover:text-amber-500 cursor-pointer"><FaPlus size={10} /></button>
-                    </div>
-                    <button onClick={() => removeFromCart(item.cartId)} className="text-rose-500/30 hover:text-rose-500 p-2 cursor-pointer"><FaTrash /></button>
+                    <button onClick={() => removeFromCart(item.cartId)} className="text-rose-500/30 hover:text-rose-500 p-2 cursor-pointer transition-colors"><FaTrash /></button>
                   </div>
                 </motion.div>
               ))}
             </AnimatePresence>
-            <Link to="/categories" className="inline-flex items-center gap-3 text-[10px] font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-all mt-6">
-              <FaArrowLeft /> Continue Acquisition
-            </Link>
           </div>
 
-          {/* RIGHT: SUMMARY CARD (The "Terminal") */}
+          {/* RIGHT: SUMMARY CARD */}
           <div className="lg:col-span-1">
             <div className={`sticky top-32 p-10 rounded-[3rem] border ${
-              isDarkMode ? "bg-[#0d1117] border-slate-800 shadow-[0_0_50px_-12px_rgba(245,158,11,0.15)]" : "bg-white border-slate-200 shadow-2xl"
+              isDarkMode ? "bg-[#0d1117] border-slate-800 shadow-2xl" : "bg-white border-slate-200 shadow-2xl"
             }`}>
               <h3 className="text-2xl font-black italic uppercase mb-8 flex items-center gap-3">
                 <FaFileInvoiceDollar className="text-amber-500" /> Summary
               </h3>
 
-              {/* PREMIUM COUPON SECTION */}
-              <div className={`mb-8 p-5 rounded-2xl border ${isDarkMode ? "bg-black/40 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
-                <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest opacity-40 mb-3">
-                  <FaTicketAlt /> Security Override
-                </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" placeholder="ENTER CODE" value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    className="bg-transparent border-b border-amber-500/30 outline-none text-[10px] font-black w-full p-2 focus:border-amber-500 transition-colors"
-                  />
-                  <button onClick={handleApplyCoupon} className="bg-amber-500 text-black px-4 py-2 rounded-xl text-[9px] font-black hover:bg-amber-600 cursor-pointer active:scale-95 transition-all">Apply</button>
-                </div>
-                {couponStatus.msg && (
-                  <p className={`text-[8px] font-black mt-2 uppercase ${couponStatus.isError ? "text-rose-500" : "text-emerald-500"}`}>{couponStatus.msg}</p>
-                )}
-              </div>
-
-              {/* PRICE BREAKDOWN */}
               <div className="space-y-4 mb-10">
-                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-                {discount > 0 && <div className="flex justify-between text-[10px] font-black uppercase text-emerald-500 animate-pulse"><span>Override Active</span><span>-${discountAmount.toFixed(2)}</span></div>}
-                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50"><span>Thermal Tax (8%)</span><span>${tax.toFixed(2)}</span></div>
-                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50"><span>Freight</span><span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
-                
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50">
+                  <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50">
+                  <span>Tax (8%)</span><span>${tax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-50">
+                  <span>Freight</span><span>${shipping.toFixed(2)}</span>
+                </div>
                 <div className="pt-6 border-t border-slate-800/20 flex justify-between items-end">
-                  <span className="text-[10px] font-black uppercase opacity-40 leading-none">Total Credits</span>
                   <span className="text-4xl font-black italic text-amber-500 leading-none tracking-tighter">${total.toFixed(2)}</span>
                 </div>
               </div>
 
-              {/* ✅ ACTION BUTTON: Swaps logic based on currentUser */}
+              {/* AUTH INDICATOR */}
+              <div className="mb-6 p-4 rounded-2xl bg-slate-500/5 border border-slate-800/10 flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full ${isLoggedIn ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
+                  {isLoggedIn ? `Linked: ${currentUser.email.split('@')[0]}` : "Auth Required"}
+                </span>
+              </div>
+
               <button 
                 onClick={handleCheckout}
+                disabled={isSyncing}
                 className={`w-full py-5 font-black uppercase text-xs rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer group ${
                   isLoggedIn 
-                    ? "bg-amber-500 text-black hover:bg-amber-400" 
-                    : "bg-rose-600 text-white hover:bg-rose-700 hover:shadow-rose-500/40"
-                }`}
+                    ? "bg-amber-500 text-black hover:bg-amber-400 active:scale-95" 
+                    : "bg-rose-600 text-white hover:bg-rose-700"
+                } ${isSyncing ? "opacity-70 cursor-wait" : ""}`}
               >
-                {!isLoggedIn && <FaLock className="group-hover:animate-bounce" />}
-                {isLoggedIn ? "Place Order" : "LOGIN REQUIRED"}
+                {isSyncing ? (
+                  <FaSync className="animate-spin" />
+                ) : !isLoggedIn ? (
+                  <FaLock />
+                ) : (
+                  <FaCloudUploadAlt className="group-hover:-translate-y-1 transition-transform" />
+                )}
+                {isSyncing ? "Syncing Arsenal..." : isLoggedIn ? "Deploy Order" : "Login to Checkout"}
               </button>
-
-              <div className="flex items-center justify-center gap-4 py-6 opacity-20">
-                <FaShieldAlt /> <FaTruck /> <FaCheckCircle />
-              </div>
-              
-              {!isLoggedIn && (
-                <p className="text-[8px] text-center font-black text-rose-500 uppercase tracking-[0.2em] animate-pulse">
-                   Warning: Unauthorized Credit Transfer Attempt Detected. 
-                   <br/>Please Log In.
-                </p>
-              )}
             </div>
           </div>
         </div>

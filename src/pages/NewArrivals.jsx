@@ -1,275 +1,299 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
 import { useCart } from "../context/CartContext";
-import {
-  FaBolt, FaRegClock, FaMicrochip, FaArrowRight,
-  FaShieldAlt, FaChartLine, FaRocket, FaCalendarAlt,
-  FaClock, FaTag, FaTimes
+import { db } from "../firebase/Firebase";
+import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { 
+  FaRocket, FaCalendarAlt, FaMicrochip, FaArrowRight, 
+  FaTimes, FaBolt, FaLayerGroup, FaFire, FaBox, FaInfoCircle
 } from "react-icons/fa";
-
-// ──────────────────────────────────────────────────────────────
-// FULL DATA WITH ARRIVAL TIMESTAMPS (March 2026)
-// ──────────────────────────────────────────────────────────────
-const NEW_DROPS = [
-  { id: 9001, name: "NVIDIA GeForce RTX 5090", price: 1999, cat: "Graphics Cards", img: "⚡", tech: "32GB GDDR7 • Blackwell • DLSS 4.5", status: "Flagship Drop", arrivalDate: "2025-01-30", arrivalTime: "09:00 UTC", stock: "142 units", detail: "World's fastest consumer GPU. 2× ray tracing performance." },
-  { id: 9002, name: "NVIDIA RTX 5080", price: 1199, cat: "Graphics Cards", img: "🌌", tech: "16GB GDDR7 • 5th Gen Tensor", status: "In Stock", arrivalDate: "2025-01-30", arrivalTime: "09:00 UTC", stock: "387 units", detail: "Perfect 4K/144Hz gaming card." },
-  { id: 9003, name: "AMD Radeon RX 9070 XT", price: 769, cat: "Graphics Cards", img: "🔥", tech: "16GB GDDR6 • FSR 4 AI", status: "High Demand", arrivalDate: "2026-02-18", arrivalTime: "14:00 UTC", stock: "94 units", detail: "Best price/performance 4K card of 2026." },
-  { id: 9004, name: "NVIDIA RTX 5070 Ti", price: 799, cat: "Graphics Cards", img: "🚀", tech: "12GB GDDR7 • Advanced RT Core", status: "New Entry", arrivalDate: "2025-02-27", arrivalTime: "16:00 UTC", stock: "521 units", detail: "Mid-range king for 1440p ultra." },
-
-  { id: 9007, name: "AMD Ryzen 9 9950X3D", price: 749, cat: "Processors", img: "🧠", tech: "16C/32T • 128MB 3D V-Cache", status: "Gaming King", arrivalDate: "2025-03-12", arrivalTime: "13:00 UTC", stock: "289 units", detail: "Fastest gaming CPU ever made." },
-  { id: 9008, name: "Intel Core Ultra 9 285K", price: 589, cat: "Processors", img: "🌟", tech: "24 Cores • Arrow Lake • NPU", status: "AI Optimized", arrivalDate: "2024-10-24", arrivalTime: "08:00 UTC", stock: "412 units", detail: "Strong content creation + AI acceleration." },
-  { id: 9009, name: "AMD Ryzen 7 9800X3D", price: 479, cat: "Processors", img: "⚡", tech: "8C/16T • 96MB 3D V-Cache", status: "In Stock", arrivalDate: "2024-11-07", arrivalTime: "10:00 UTC", stock: "673 units", detail: "Undisputed 1440p/4K gaming champion." },
-
-  { id: 9012, name: "ASUS ROG Maximus Z890 Extreme", price: 899, cat: "Motherboards", img: "🔌", tech: "Z890 • Thunderbolt 5 • WiFi 7", status: "Premium", arrivalDate: "2025-02-12", arrivalTime: "11:00 UTC", stock: "67 units", detail: "Flagship board for Arrow Lake." },
-  { id: 9013, name: "MSI MPG X870E Carbon", price: 549, cat: "Motherboards", img: "🌐", tech: "X870E • PCIe 5.0 • WiFi 7", status: "In Stock", arrivalDate: "2025-01-15", arrivalTime: "15:00 UTC", stock: "134 units", detail: "High-end AM5 platform." },
-
-  { id: 9015, name: "G.Skill Trident Z5 64GB", price: 319, cat: "Memory", img: "📏", tech: "DDR5-9200 CL32 • EXPO", status: "High Demand", arrivalDate: "2026-02-25", arrivalTime: "09:30 UTC", stock: "218 units", detail: "Fastest DDR5 for Ryzen 9000." },
-
-  { id: 9018, name: "Crucial T705 4TB Gen5", price: 599, cat: "Storage", img: "🚄", tech: "14,500 MB/s • Phison E26", status: "Latest Tech", arrivalDate: "2025-01-08", arrivalTime: "12:00 UTC", stock: "305 units", detail: "Fastest consumer SSD on Earth." },
-
-  { id: 9021, name: "Samsung Galaxy Z Fold7 Ultra", price: 2199, cat: "Mobile Tech", img: "📱", tech: "Tri-Fold 10.2\" • Snapdragon 8 Gen 4", status: "Pre-Order", arrivalDate: "2025-09-10", arrivalTime: "00:01 UTC", stock: "Pre-Order", detail: "Most advanced foldable ever." },
-
-  { id: 9023, name: "Seasonic Prime TX-1600 Titanium", price: 499, cat: "Power Units", img: "🔋", tech: "1600W • 80+ Titanium • ATX 3.1", status: "In Stock", arrivalDate: "2025-03-05", arrivalTime: "10:00 UTC", stock: "89 units", detail: "Ultimate PSU for 5090 builds." },
-  { id: 9024, name: "Beyerdynamic MMX 330 Studio Pro", price: 650, cat: "Audio Gear", img: "🎧", tech: "Planar Magnetic • Built-in DAC", status: "Premium", arrivalDate: "2025-02-20", arrivalTime: "14:30 UTC", stock: "156 units", detail: "Reference studio headphones." },
-];
 
 const NewArrivals = () => {
   const { isDarkMode } = useTheme();
   const { addToCart } = useCart();
-  const [hoveredId, setHoveredId] = useState(null);
+  const [arrivals, setArrivals] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("All");
 
-  const formatArrival = (dateStr, timeStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + " • " + timeStr;
+  useEffect(() => {
+    const q = query(collection(db, "products"), orderBy("arrivalDate", "desc"), limit(20));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setArrivals(docs);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Extract unique categories for the filter bar
+  const categories = useMemo(() => {
+    const cats = ["All", ...new Set(arrivals.map(p => p.category))];
+    return cats.filter(Boolean);
+  }, [arrivals]);
+
+  const filteredArrivals = arrivals.filter(p => 
+    activeFilter === "All" || p.category === activeFilter
+  );
+
+  const formatArrival = (dateVal) => {
+    if (!dateVal) return "RECENT DROP";
+    const date = dateVal.seconds ? new Date(dateVal.seconds * 1000) : new Date(dateVal);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   return (
-    <div className={`min-h-screen pt-20 md:pt-28 pb-20 transition-colors duration-500 ${
+    <div className={`min-h-screen pt-24 pb-20 transition-colors duration-500 ${
       isDarkMode ? "bg-[#05070a] text-white" : "bg-slate-50 text-slate-900"
     }`}>
+      
+      {/* 1. CYBER HEADER */}
+      <section className="px-6 max-w-7xl mx-auto mb-12">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+          <div>
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 mb-4"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-500">Live Satellite Feed // Sync Active</span>
+            </motion.div>
+            <h1 className="text-7xl md:text-9xl font-black italic uppercase tracking-tighter leading-[0.75]">
+              NEW<br /><span className="text-amber-500">DROPS</span>
+            </h1>
+          </div>
 
-      {/* HERO - Fully Responsive */}
-      <section className="relative px-6 py-16 md:py-24 overflow-hidden">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
-            <div className="flex-1 text-center lg:text-left">
-              <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-amber-500/10 border border-amber-500/30 mb-6">
-                <FaRocket className="text-amber-500 animate-pulse" />
-                <span className="font-black uppercase text-xs tracking-[0.25em]">MARCH 2026 • LIVE</span>
-              </div>
-
-              <h1 className="text-6xl sm:text-7xl md:text-8xl lg:text-[92px] font-black italic uppercase tracking-[-0.04em] leading-[0.85]">
-                NEW<br />ARRIVALS
-              </h1>
-
-              <p className="mt-6 max-w-lg mx-auto lg:mx-0 text-base md:text-lg opacity-70 font-light">
-                Exact arrival timestamps • Verified stock • Full technical specs.<br />
-                Updated <span className="font-mono text-amber-400">March 07, 2026 16:53 UTC</span>
-              </p>
+          {/* Stats Bar */}
+          <div className="flex gap-10 border-l border-slate-800/20 pl-8 hidden lg:flex">
+            <div>
+              <p className="text-[10px] opacity-40 font-black uppercase mb-1">Total Assets</p>
+              <p className="text-3xl font-black italic">{arrivals.length}</p>
             </div>
-
-            <div className="flex-1 flex justify-center lg:justify-end">
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-                  <div className="text-3xl mb-2">📈</div>
-                  <div className="text-xs font-black uppercase opacity-60">Demand</div>
-                  <div className="text-2xl font-black text-emerald-400">+47%</div>
-                </div>
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-                  <div className="text-3xl mb-2">🛡️</div>
-                  <div className="text-xs font-black uppercase opacity-60">Authentic</div>
-                  <div className="text-2xl font-black">100%</div>
-                </div>
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-                  <div className="text-3xl mb-2">⚡</div>
-                  <div className="text-xs font-black uppercase opacity-60">Ships In</div>
-                  <div className="text-2xl font-black">24h</div>
-                </div>
-              </div>
+            <div>
+              <p className="text-[10px] opacity-40 font-black uppercase mb-1">Sector</p>
+              <p className="text-3xl font-black italic text-amber-500">Global</p>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* PRODUCT GRID - Responsive (1 / 2 / 3 / 4 columns) */}
-      <section className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-          {NEW_DROPS.map((p, idx) => (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.03 }}
-              onMouseEnter={() => setHoveredId(p.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              onClick={() => setSelectedProduct(p)}
-              className={`group relative rounded-3xl overflow-hidden border h-full flex flex-col cursor-pointer transition-all duration-300 ${
-                isDarkMode 
-                  ? "bg-[#0d1117] border-slate-800 hover:border-amber-500/60" 
-                  : "bg-white border-slate-200 hover:shadow-2xl hover:border-amber-400"
+        {/* 2. FILTER SYSTEM */}
+        <div className="flex gap-3 mt-12 overflow-x-auto pb-4 no-scrollbar">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveFilter(cat)}
+              className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${
+                activeFilter === cat 
+                ? "bg-amber-500 border-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.3)]" 
+                : "bg-transparent border-slate-800/50 text-slate-500 hover:border-amber-500"
               }`}
             >
-              {/* Status & Date */}
-              <div className="absolute top-4 left-4 z-30 flex flex-col gap-2">
-                <div className="bg-emerald-500 text-black text-[10px] font-black px-4 py-1 rounded-2xl shadow">
-                  {p.status}
-                </div>
-                <div className="bg-black/70 text-[10px] font-mono px-3 py-1 rounded-xl flex items-center gap-1 text-white">
-                  <FaCalendarAlt className="text-amber-400" />
-                  {formatArrival(p.arrivalDate, p.arrivalTime)}
-                </div>
-              </div>
-
-              {/* Visual */}
-              <div className="h-56 sm:h-60 bg-gradient-to-br from-slate-950 to-black flex items-center justify-center relative overflow-hidden">
-                <motion.span
-                  animate={{ scale: hoveredId === p.id ? 1.25 : 1 }}
-                  className="text-8xl sm:text-9xl transition-all duration-500 drop-shadow-2xl"
-                >
-                  {p.img}
-                </motion.span>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 p-6 flex flex-col">
-                <div className="uppercase text-amber-500 text-xs font-black tracking-widest mb-1">{p.cat}</div>
-                <h3 className="font-black text-xl leading-tight mb-4 line-clamp-2 group-hover:text-amber-400 transition-colors">
-                  {p.name}
-                </h3>
-
-                <div className="text-xs text-slate-400 mb-6 flex items-center gap-2">
-                  <FaMicrochip /> {p.tech}
-                </div>
-
-                <div className="text-sm opacity-70 line-clamp-3 mb-8">
-                  {p.detail}
-                </div>
-
-                <div className="mt-auto pt-6 border-t border-slate-700/30 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs opacity-50">PRICE</span>
-                    <div className="text-3xl font-black text-amber-500">${p.price}</div>
-                  </div>
-
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={(e) => { e.stopPropagation(); addToCart(p); }}
-                    className="bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-widest px-7 py-4 rounded-2xl flex items-center gap-2 shadow-lg"
-                  >
-                    ADD <FaArrowRight className="text-sm" />
-                  </motion.button>
-                </div>
-              </div>
-
-              {/* Stock Bar */}
-              <div className="px-6 py-3 bg-black/20 text-xs font-mono flex items-center justify-between text-emerald-400 border-t border-slate-700/30">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  {p.stock}
-                </div>
-                <FaClock className="opacity-40" />
-              </div>
-            </motion.div>
+              {cat}
+            </button>
           ))}
         </div>
       </section>
 
-      {/* DETAIL MODAL - Mobile Friendly */}
+      {/* 3. PRODUCT GRID */}
+      <section className="max-w-7xl mx-auto px-6">
+        {loading ? (
+          <div className="py-40 text-center font-black uppercase tracking-widest opacity-20 animate-pulse text-2xl">Initializing Neural Link...</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredArrivals.map((p, idx) => (
+                <EnhancedCard 
+                  key={p.id} 
+                  product={p} 
+                  idx={idx} 
+                  isDarkMode={isDarkMode} 
+                  onSelect={() => setSelectedProduct(p)}
+                  onAdd={(e) => { e.stopPropagation(); addToCart(p); }}
+                  formatArrival={formatArrival}
+                />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </section>
+
+      {/* 4. DETAIL OVERLAY */}
       <AnimatePresence>
         {selectedProduct && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedProduct(null)}
-              className="fixed inset-0 bg-black/90 backdrop-blur-2xl z-[999]"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 40 }}
-              className={`fixed inset-x-4 top-[10%] bottom-[10%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:max-w-2xl md:h-fit z-[1000] rounded-3xl overflow-hidden shadow-2xl ${
-                isDarkMode ? "bg-[#0d1117]" : "bg-white"
-              }`}
-            >
-              <div className="p-6 md:p-10 relative">
-                <button
-                  onClick={() => setSelectedProduct(null)}
-                  className="absolute top-6 right-6 text-4xl opacity-40 hover:opacity-100 transition-all"
-                >
-                  <FaTimes />
-                </button>
-
-                <div className="text-amber-500 text-xs font-black tracking-widest mb-2">{selectedProduct.cat}</div>
-                <h2 className="text-3xl md:text-4xl font-black leading-none mb-8 pr-10">{selectedProduct.name}</h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-slate-900/50 rounded-3xl flex items-center justify-center text-[140px] py-12">
-                    {selectedProduct.img}
-                  </div>
-
-                  <div className="space-y-7 text-sm">
-                    <div>
-                      <div className="text-xs opacity-50 mb-1">ARRIVAL</div>
-                      <div className="font-mono text-2xl leading-none">{formatArrival(selectedProduct.arrivalDate, selectedProduct.arrivalTime)}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs opacity-50 mb-2">FULL SPEC</div>
-                      <div className="opacity-80 leading-relaxed">{selectedProduct.tech}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs opacity-50 mb-1">STOCK</div>
-                      <div className="font-semibold text-emerald-400 text-lg">{selectedProduct.stock}</div>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-700/30">
-                      <div className="text-xs opacity-50 mb-2">WHY THIS DROPPED</div>
-                      <p className="text-base leading-relaxed opacity-80">{selectedProduct.detail}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }}
-                  className="mt-10 w-full py-6 bg-amber-500 hover:bg-amber-400 text-black font-black text-lg rounded-2xl flex items-center justify-center gap-4 transition-all active:scale-95"
-                >
-                  <FaArrowRight /> ADD TO ARSENAL — ${selectedProduct.price}
-                </button>
-              </div>
-            </motion.div>
-          </>
+          <ProductDossier 
+            product={selectedProduct} 
+            isDarkMode={isDarkMode} 
+            onClose={() => setSelectedProduct(null)} 
+            onAdd={addToCart} 
+            formatArrival={formatArrival}
+          />
         )}
       </AnimatePresence>
-
-      {/* FINAL CTA - Clean & Responsive */}
-      <section className="max-w-7xl mx-auto px-6 mt-20">
-        <div className={`rounded-3xl p-8 md:p-16 flex flex-col md:flex-row gap-8 md:gap-16 items-center border ${
-          isDarkMode ? "bg-gradient-to-br from-amber-500 to-amber-600 text-black" : "bg-slate-900 text-white"
-        }`}>
-          <div className="flex-1 text-center md:text-left">
-            <h2 className="text-4xl md:text-5xl font-black italic tracking-tight leading-none">Never miss the next flagship drop</h2>
-            <p className="mt-4 opacity-75 text-sm md:text-base">Exact UTC timestamps. Zero spam. Only hardware intelligence.</p>
-          </div>
-          <div className="flex-1 w-full max-w-md">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="email"
-                placeholder="YOUR PROTOCOL EMAIL"
-                className={`flex-1 px-6 py-5 rounded-2xl outline-none text-sm font-medium ${isDarkMode ? "bg-black/30 text-black" : "bg-white/10 text-white"}`}
-              />
-              <button className="px-12 py-5 bg-black text-white font-black uppercase tracking-widest rounded-2xl hover:bg-zinc-900 transition-all">SUBSCRIBE</button>
-            </div>
-          </div>
-        </div>
-      </section>
     </div>
   );
 };
+
+/* --- ENHANCED CARD COMPONENT --- */
+const EnhancedCard = ({ product, idx, isDarkMode, onSelect, onAdd, formatArrival }) => {
+  const isLowStock = product.quantity > 0 && product.quantity <= 5;
+  
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ delay: idx * 0.03 }}
+      onClick={onSelect}
+      className={`group relative rounded-[2rem] overflow-hidden border cursor-pointer flex flex-col h-full transition-all duration-500 ${
+        isDarkMode ? "bg-[#0d1117] border-slate-800 hover:border-amber-500/50" : "bg-white border-slate-200 shadow-xl"
+      }`}
+    >
+      {/* Visual Header */}
+      <div className="h-60 bg-black relative overflow-hidden">
+        {product.image ? (
+          <img src={product.image} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700" alt="" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center opacity-10"><FaBox size={80} /></div>
+        )}
+
+        {/* Floating Badges */}
+        <div className="absolute top-4 left-4 flex flex-col gap-2">
+          <span className="bg-amber-500 text-black text-[8px] font-black px-3 py-1 rounded-md uppercase italic flex items-center gap-1">
+            <FaBolt /> {formatArrival(product.arrivalDate)}
+          </span>
+          {isLowStock && (
+            <span className="bg-rose-600 text-white text-[8px] font-black px-3 py-1 rounded-md uppercase animate-pulse">
+              Critial Stock: {product.quantity}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Data Content */}
+      <div className="p-6 flex-1 flex flex-col">
+        <div className="flex justify-between items-start mb-2">
+          <span className="text-[9px] font-black uppercase text-amber-500 tracking-widest">{product.category}</span>
+          <FaInfoCircle className="opacity-0 group-hover:opacity-30 transition-opacity" />
+        </div>
+        
+        <h3 className="text-xl font-black uppercase italic leading-none mb-4 group-hover:text-amber-500 transition-colors">
+          {product.name}
+        </h3>
+
+        {/* Quick Intel Bar (Visible on Hover) */}
+        <div className="flex gap-4 mb-6 opacity-40 group-hover:opacity-100 transition-opacity duration-500">
+           <div className="flex items-center gap-1.5">
+              <FaMicrochip className="text-xs text-amber-500" />
+              <span className="text-[9px] font-bold uppercase truncate max-w-[80px]">{product.tech || "Standard"}</span>
+           </div>
+           <div className="flex items-center gap-1.5">
+              <FaLayerGroup className="text-xs text-amber-500" />
+              <span className="text-[9px] font-bold uppercase">Gen.5</span>
+           </div>
+        </div>
+
+        {/* Footer Pricing */}
+        <div className="mt-auto pt-5 border-t border-slate-800/20 flex justify-between items-end">
+          <div>
+            <p className="text-[8px] font-black opacity-30 uppercase">MSRP Asset Value</p>
+            <p className="text-2xl font-black text-amber-500">${product.price}</p>
+          </div>
+          <button 
+            onClick={onAdd}
+            className="w-12 h-12 rounded-xl bg-amber-500 text-black flex items-center justify-center hover:bg-white transition-all hover:scale-110 active:scale-90 shadow-lg"
+          >
+            <FaArrowRight />
+          </button>
+        </div>
+      </div>
+
+      {/* Stock Progress Line */}
+      <div className="h-1 w-full bg-slate-800">
+        <motion.div 
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.min((product.quantity / 50) * 100, 100)}%` }}
+          className={`h-full ${isLowStock ? "bg-rose-500" : "bg-emerald-500"}`}
+        />
+      </div>
+    </motion.div>
+  );
+};
+
+/* --- FULL DOSSIER MODAL --- */
+const ProductDossier = ({ product, isDarkMode, onClose, onAdd, formatArrival }) => (
+  <>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[999]" />
+    <motion.div 
+      initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+      className={`fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-5xl w-full z-[1000] rounded-[3rem] overflow-hidden border ${
+        isDarkMode ? "bg-[#0d1117] border-slate-800 text-white" : "bg-white border-slate-200 text-black"
+      }`}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 h-full max-h-[90vh] overflow-y-auto no-scrollbar">
+        <div className="bg-black flex items-center justify-center p-10 relative">
+          {product.image ? <img src={product.image} className="max-h-full w-full object-contain" alt="" /> : <FaBox size={100} className="opacity-10" />}
+          <div className="absolute bottom-8 left-8 bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl backdrop-blur-md">
+             <p className="text-[9px] font-black text-amber-500 uppercase mb-1">Authenticated Asset</p>
+             <p className="text-[10px] font-mono opacity-50">ID: {product.id.substring(0, 12).toUpperCase()}</p>
+          </div>
+        </div>
+
+        <div className="p-12 flex flex-col">
+          <div className="flex justify-between items-start mb-8">
+            <span className="bg-amber-500/10 text-amber-500 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-500/20">
+              {product.category}
+            </span>
+            <button onClick={onClose} className="text-2xl opacity-30 hover:opacity-100 transition-opacity"><FaTimes /></button>
+          </div>
+
+          <h2 className="text-5xl font-black uppercase italic leading-none mb-6">{product.name}</h2>
+          
+          <div className="space-y-8 flex-1">
+             <div className="grid grid-cols-2 gap-4">
+                <DossierStat icon={<FaCalendarAlt />} label="Deployed" value={formatArrival(product.arrivalDate)} />
+                <DossierStat icon={<FaFire />} label="Status" value={product.status || "Operational"} />
+                <DossierStat icon={<FaMicrochip />} label="Core Spec" value={product.tech || "Quantum"} />
+                <DossierStat icon={<FaBox />} label="Inventory" value={`${product.quantity || 0} Units`} />
+             </div>
+
+             <div>
+                <p className="text-[10px] font-black uppercase text-amber-500 mb-3 tracking-widest">Technical Brief</p>
+                <p className="text-sm opacity-60 leading-relaxed font-medium">
+                  This asset represents the latest advancement in {product.category} engineering. 
+                  Optimized for extreme performance and high-availability neural processing. 
+                  Standard deployment includes 3-year hardware encryption and priority support.
+                </p>
+             </div>
+          </div>
+
+          <div className="mt-12 pt-8 border-t border-slate-800/20 flex items-center justify-between gap-6">
+            <div>
+              <p className="text-[10px] font-black opacity-40 uppercase">Total Acquisition Cost</p>
+              <p className="text-4xl font-black text-amber-500">${product.price}</p>
+            </div>
+            <button 
+              onClick={() => { onAdd(product); onClose(); }} 
+              className="flex-1 py-6 bg-amber-500 text-black font-black uppercase text-xs tracking-[0.2em] rounded-2xl hover:bg-white transition-all shadow-xl hover:shadow-amber-500/20"
+            >
+              Initialize Purchase
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  </>
+);
+
+const DossierStat = ({ icon, label, value }) => (
+  <div className="bg-slate-500/5 p-4 rounded-2xl border border-slate-800/10 flex items-center gap-4">
+    <div className="text-amber-500 text-xl">{icon}</div>
+    <div>
+      <p className="text-[9px] font-black opacity-30 uppercase">{label}</p>
+      <p className="text-sm font-black uppercase italic">{value}</p>
+    </div>
+  </div>
+);
 
 export default NewArrivals;

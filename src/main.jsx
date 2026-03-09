@@ -9,15 +9,20 @@ import { AuthProvider } from "./provider/AuthProvider"
 import SearchProvider from './context/SearchContext'
 import { CartProvider } from './context/CartContext'
 
+// 1. Import your Floating LiveChat
+import LiveChat from './chat/LiveChat' 
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AuthProvider>
       <CartProvider>
-      <SearchProvider>
-      <ThemeProvider>
-        <RouterProvider router={Routes} />
-      </ThemeProvider>
-      </SearchProvider>
+        <SearchProvider>
+          <ThemeProvider>
+            {/* 2. Place it here so it persists across all routes */}
+            <LiveChat /> 
+            <RouterProvider router={Routes} />
+          </ThemeProvider>
+        </SearchProvider>
       </CartProvider>
     </AuthProvider>
   </StrictMode>
