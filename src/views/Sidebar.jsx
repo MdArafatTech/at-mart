@@ -48,7 +48,7 @@ const Sidebar = ({ isOpen, setOpen, activeView, setActiveView, isDarkMode, onLog
     { id: "orders", label: "Orders", icon: <FaShoppingBag /> },
      { id: "return", label: "Return", icon: <GiReturnArrow/> },
     { id: "customers", label: "Customers", icon: <FaUser /> },
-    { id: "adminchat", label: "Admin Chat", icon: <FaMessage /> },
+      { id: "adminChat", label: "Admin Chat", icon: <FaMessage /> },
     { id: "products", label: "Add Product", icon: <AiFillProduct /> },
     { id: "settings", label: "Settings", icon: <FaCog /> },
      
