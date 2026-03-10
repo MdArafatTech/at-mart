@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { db } from "../firebase/Firebase";
 import {
   collection,
@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   query,
   orderBy,
-  Timestamp, // <--- ADD THIS LINE
+  Timestamp,
 } from "firebase/firestore";
 import {
   FaPlus,
@@ -30,6 +30,69 @@ import {
 } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 
+const EmojiPickerInput = ({
+  label,
+  value,
+  onChange,
+  isDarkMode,
+  placeholder,
+  showPicker,
+  setShowPicker,
+  pickerRef,
+  emojis,
+}) => (
+  <div className="flex flex-col space-y-2 relative" ref={pickerRef}>
+    <label className="text-[10px] font-black uppercase text-slate-500 ml-2 tracking-widest">
+      {label}
+    </label>
+    <div className="relative group">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full p-4 md:p-5 pr-14 rounded-2xl md:rounded-3xl border font-bold outline-none transition-all text-sm ${
+          isDarkMode
+            ? "bg-slate-500/5 border-slate-800 text-white focus:border-amber-500"
+            : "bg-gray-50 border-slate-200 focus:border-amber-500"
+        }`}
+      />
+      <button
+        type="button"
+        onClick={() => setShowPicker(!showPicker)}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-xl hover:scale-110 transition-transform p-2"
+      >
+        {value && !value.startsWith("http") ? value : "😊"}
+      </button>
+      {showPicker && (
+        <div
+          className={`absolute right-0 top-full mt-3 z-[110] w-64 p-4 rounded-[2rem] border shadow-2xl ${
+            isDarkMode
+              ? "bg-[#161b22] border-slate-700"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <div className="grid grid-cols-4 gap-2">
+            {emojis.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  onChange(emoji);
+                  setShowPicker(false);
+                }}
+                className="text-2xl p-2 rounded-xl hover:bg-amber-500/20 transition-colors"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
+
 const Products = ({ isDarkMode }) => {
   const [products, setProducts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,7 +101,6 @@ const Products = ({ isDarkMode }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  // Added 'arrivalDate' and 'status' to initial state
   const [formData, setFormData] = useState({
     name: "",
     price: "",
@@ -51,23 +113,40 @@ const Products = ({ isDarkMode }) => {
     targetPage: "Homepage",
     isOnSale: false,
     status: "In Stock",
+    arrivalDate: "",
   });
 
+  // Emoji picker state (shared for the modal)
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef(null);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+        setShowPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handlePricingChange = (field, value) => {
-    const numVal = Number(value);
+    const numVal = Number(value) || 0;
     let newFormData = { ...formData, [field]: value };
+
     const { price, originalPrice, discount } = newFormData;
 
     if (field === "discount") {
       if (originalPrice && numVal > 0) {
         newFormData.price = Math.round(
-          Number(originalPrice) * (1 - numVal / 100),
+          Number(originalPrice) * (1 - numVal / 100)
         );
       }
     } else if (field === "price") {
       if (originalPrice && Number(originalPrice) > numVal) {
         newFormData.discount = Math.round(
-          ((Number(originalPrice) - numVal) / Number(originalPrice)) * 100,
+          ((Number(originalPrice) - numVal) / Number(originalPrice)) * 100
         );
       }
     } else if (field === "originalPrice") {
@@ -75,7 +154,7 @@ const Products = ({ isDarkMode }) => {
         newFormData.price = Math.round(numVal * (1 - Number(discount) / 100));
       } else if (price && numVal > Number(price)) {
         newFormData.discount = Math.round(
-          ((numVal - Number(price)) / numVal) * 100,
+          ((numVal - Number(price)) / numVal) * 100
         );
       }
     }
@@ -95,73 +174,81 @@ const Products = ({ isDarkMode }) => {
     return products.filter(
       (p) =>
         (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.category || "").toLowerCase().includes(searchTerm.toLowerCase()),
+        (p.category || "").toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [products, searchTerm]);
 
   const stats = useMemo(() => {
     const totalValue = products.reduce(
       (sum, p) => sum + (Number(p.price) * Number(p.quantity) || 0),
-      0,
+      0
     );
     const lowStock = products.filter((p) => Number(p.quantity) <= 5).length;
     return { totalValue, lowStock };
   }, [products]);
 
-  // --- MODIFIED SUBMIT LOGIC ---
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
+    try {
+      let arrivalDateValue;
+      if (formData.arrivalDate) {
+        arrivalDateValue = Timestamp.fromDate(new Date(formData.arrivalDate));
+      } else {
+        arrivalDateValue = serverTimestamp();
+      }
 
-  try {
-    // 1. DATE SYNC: Ensure arrivalDate is a valid Firestore Timestamp
-    // If user didn't pick a date, use the current time (serverTimestamp)
-    let arrivalDateValue;
-    if (formData.arrivalDate) {
-      arrivalDateValue = Timestamp.fromDate(new Date(formData.arrivalDate));
-    } else {
-      arrivalDateValue = serverTimestamp();
+      const data = {
+        ...formData,
+        price: Number(formData.price) || 0,
+        originalPrice: Number(formData.originalPrice) || Number(formData.price) || 0,
+        discount: Number(formData.discount) || 0,
+        quantity: Number(formData.quantity) || 0,
+
+        targetPage:
+          formData.targetPage === "New Arrivals"
+            ? "NewArrivals"
+            : formData.targetPage,
+
+        isOnSale: formData.targetPage === "Sale",
+
+        updatedAt: serverTimestamp(),
+        arrivalDate: arrivalDateValue,
+      };
+
+      if (editingId) {
+        const productRef = doc(db, "products", editingId);
+        await updateDoc(productRef, data);
+      } else {
+        await addDoc(collection(db, "products"), {
+          ...data,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      closeModal();
+    } catch (err) {
+      console.error("Neural Sync Error:", err);
+      alert("Matrix Update Failed: " + err.message);
     }
+  };
 
-    const data = {
-      ...formData,
-      // 2. DATA TYPE SANITIZATION
-      price: Number(formData.price) || 0,
-      originalPrice: Number(formData.originalPrice) || Number(formData.price),
-      discount: Number(formData.discount) || 0,
-      quantity: Number(formData.quantity) || 0,
-
-      // 3. PAGE TARGETING LOGIC
-      // Important: Use "NewArrivals" (no space) to match your NewArrivals.js query
-      targetPage: formData.targetPage === "New Arrivals" ? "NewArrivals" : formData.targetPage,
-      
-      // 4. SALE STATUS (Strict Gatekeeping)
-      // New Arrivals query usually has: where("isOnSale", "==", false)
-      isOnSale: formData.targetPage === "Sale",
-
-      updatedAt: serverTimestamp(),
-      arrivalDate: arrivalDateValue,
-    };
-
-    if (editingId) {
-      const productRef = doc(db, "products", editingId);
-      await updateDoc(productRef, data);
-    } else {
-      await addDoc(collection(db, "products"), {
-        ...data,
-        createdAt: serverTimestamp(), // Only set on creation
-      });
-    }
-
-    closeModal();
-  } catch (err) {
-    console.error("Neural Sync Error:", err);
-    alert("Matrix Update Failed: " + err.message);
-  }
-};
   const openModal = (product = null) => {
     if (product) {
-      setFormData({ ...product });
+      // Convert Firestore Timestamp to YYYY-MM-DD for date input
+      let arrivalDateStr = "";
+      if (product.arrivalDate) {
+        if (product.arrivalDate.toDate) {
+          arrivalDateStr = product.arrivalDate.toDate().toISOString().split("T")[0];
+        } else if (product.arrivalDate instanceof Date) {
+          arrivalDateStr = product.arrivalDate.toISOString().split("T")[0];
+        }
+      }
+
+      setFormData({
+        ...product,
+        arrivalDate: arrivalDateStr,
+      });
       setEditingId(product.id);
     } else {
       setFormData({
@@ -176,15 +263,18 @@ const handleSubmit = async (e) => {
         targetPage: "Homepage",
         isOnSale: false,
         status: "In Stock",
+        arrivalDate: "",
       });
       setEditingId(null);
     }
     setIsModalOpen(true);
+    setShowPicker(false); // reset picker
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
+    setShowPicker(false);
   };
 
   const executeDelete = async () => {
@@ -203,7 +293,9 @@ const handleSubmit = async (e) => {
 
   return (
     <div
-      className={`min-h-screen   space-y-7 ${isDarkMode ? "bg-[#05070a] text-white" : "bg-slate-50 text-slate-900"}`}
+      className={`min-h-screen space-y-7 ${
+        isDarkMode ? "bg-[#05070a] text-white" : "bg-slate-50 text-slate-900"
+      }`}
     >
       {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
@@ -241,7 +333,9 @@ const handleSubmit = async (e) => {
 
       {/* SEARCH */}
       <div
-        className={`p-4 rounded-[2rem] border ${isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white border-slate-200"}`}
+        className={`p-4 rounded-[2rem] border ${
+          isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white border-slate-200"
+        }`}
       >
         <div className="relative flex items-center">
           <FaSearch className="absolute left-6 text-slate-500" />
@@ -255,104 +349,103 @@ const handleSubmit = async (e) => {
         </div>
       </div>
 
-    {/* FULLY RESPONSIVE ASSET GRID */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
-  {filteredProducts.map((item) => (
-    <div
-      key={item.id}
-      className={`group relative rounded-[2rem] md:rounded-[2.5rem] border p-4 md:p-6 transition-all duration-300 hover:shadow-2xl ${
-        isDarkMode 
-          ? "bg-[#0d1117] border-slate-800" 
-          : "bg-white border-slate-200"
-      }`}
-    >
-      {/* RESPONSIVE BADGE */}
-      <div className="absolute top-4 right-4 md:top-6 md:right-6 z-10">
-        <span
-          className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black tracking-widest uppercase ${
-            item.quantity <= 5 
-              ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" 
-              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-          }`}
-        >
-          {item.quantity} UNITS
-        </span>
-      </div>
-
-      {/* RESPONSIVE IMAGE CONTAINER */}
-      <div className="relative w-full aspect-video md:h-56 rounded-[1.5rem] md:rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4 md:mb-6">
-        {item.image ? (
-          <img
-            src={item.image}
-            alt={item.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center opacity-20 text-4xl">📦</div>
-        )}
-        
-        {/* OVERLAY PILL - Scales for touch */}
-        <div className="absolute bottom-3 left-3 flex items-center gap-2 bg-black/70 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10">
-          <TargetIcon target={item.targetPage} className="text-[10px]" />
-          <span className="text-[9px] font-bold uppercase tracking-tight">
-            {item.targetPage}
-          </span>
-        </div>
-      </div>
-
-      {/* TEXT CONTENT - Responsive Typography */}
-      <div className="space-y-3 md:space-y-4">
-        <div>
-          <p className="text-[9px] md:text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
-            {item.category}
-          </p>
-          <h3 className="font-black uppercase text-base md:text-xl leading-tight dark:text-white line-clamp-1">
-            {item.name}
-          </h3>
-        </div>
-
-        {/* PRICING & ACTIONS - Responsive Flex Wrap */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-800/10 dark:border-slate-800/50 pt-4">
-          <div className="flex flex-col">
-            {item.discount > 0 && (
-              <span className="text-[10px] line-through opacity-40 font-bold dark:text-slate-400">
-                ${item.originalPrice}
+      {/* FULLY RESPONSIVE ASSET GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
+        {filteredProducts.map((item) => (
+          <div
+            key={item.id}
+            className={`group relative rounded-[2rem] md:rounded-[2.5rem] border p-4 md:p-6 transition-all duration-300 hover:shadow-2xl ${
+              isDarkMode
+                ? "bg-[#0d1117] border-slate-800"
+                : "bg-white border-slate-200"
+            }`}
+          >
+            {/* RESPONSIVE BADGE */}
+            <div className="absolute top-4 right-4 md:top-6 md:right-6 z-10">
+              <span
+                className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black tracking-widest uppercase ${
+                  item.quantity <= 5
+                    ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
+                    : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                }`}
+              >
+                {item.quantity} UNITS
               </span>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="font-black text-xl md:text-2xl lg:text-3xl tracking-tighter text-amber-500">
-                ${item.price}
-              </span>
-              {item.discount > 0 && (
-                <span className="text-[8px] md:text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded font-black">
-                  -{item.discount}%
-                </span>
+            </div>
+
+            {/* RESPONSIVE IMAGE CONTAINER */}
+            <div className="relative w-full aspect-video md:h-56 rounded-[1.5rem] md:rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-800 mb-4 md:mb-6">
+              {item.image ? (
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center opacity-20 text-4xl">📦</div>
               )}
+
+              {/* OVERLAY PILL */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-2 bg-black/70 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10">
+                <TargetIcon target={item.targetPage} className="text-[10px]" />
+                <span className="text-[9px] font-bold uppercase tracking-tight">
+                  {item.targetPage}
+                </span>
+              </div>
+            </div>
+
+            {/* TEXT CONTENT */}
+            <div className="space-y-3 md:space-y-4">
+              <div>
+                <p className="text-[9px] md:text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
+                  {item.category}
+                </p>
+                <h3 className="font-black uppercase text-base md:text-xl leading-tight dark:text-white line-clamp-1">
+                  {item.name}
+                </h3>
+              </div>
+
+              {/* PRICING & ACTIONS */}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-800/10 dark:border-slate-800/50 pt-4">
+                <div className="flex flex-col">
+                  {item.discount > 0 && (
+                    <span className="text-[10px] line-through opacity-40 font-bold dark:text-slate-400">
+                      ${item.originalPrice}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-xl md:text-2xl lg:text-3xl tracking-tighter text-amber-500">
+                      ${item.price}
+                    </span>
+                    {item.discount > 0 && (
+                      <span className="text-[8px] md:text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded font-black">
+                        -{item.discount}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openModal(item)}
+                    className="p-3 md:p-4 bg-blue-500/10 text-blue-500 rounded-xl md:rounded-2xl hover:bg-blue-500 hover:text-white transition-all active:scale-90"
+                    aria-label="Edit"
+                  >
+                    <FaEdit size={16} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(item.id)}
+                    className="p-3 md:p-4 bg-rose-500/10 text-rose-500 rounded-xl md:rounded-2xl hover:bg-rose-500 hover:text-white transition-all active:scale-90"
+                    aria-label="Delete"
+                  >
+                    <FaTrash size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* ICON BUTTONS - Larger tap targets for mobile */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => openModal(item)}
-              className="p-3 md:p-4 bg-blue-500/10 text-blue-500 rounded-xl md:rounded-2xl hover:bg-blue-500 hover:text-white transition-all active:scale-90"
-              aria-label="Edit"
-            >
-              <FaEdit size={16} />
-            </button>
-            <button
-              onClick={() => setDeleteConfirm(item.id)}
-              className="p-3 md:p-4 bg-rose-500/10 text-rose-500 rounded-xl md:rounded-2xl hover:bg-rose-500 hover:text-white transition-all active:scale-90"
-              aria-label="Delete"
-            >
-              <FaTrash size={16} />
-            </button>
-          </div>
-        </div>
+        ))}
       </div>
-    </div>
-  ))}
-</div>
 
       {/* DEPLOYMENT MODAL */}
       <AnimatePresence>
@@ -362,7 +455,6 @@ const handleSubmit = async (e) => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              /* RESPONSIVE FIX: Added 'grid-cols-1' for mobile, 'lg:grid-cols-2' for desktop */
               className={`w-full max-w-5xl p-6 md:p-12 rounded-[2rem] md:rounded-[4rem] border max-h-[90vh] overflow-y-auto no-scrollbar ${
                 isDarkMode
                   ? "bg-[#0d1117] border-slate-800 text-white"
@@ -373,7 +465,7 @@ const handleSubmit = async (e) => {
                 onSubmit={handleSubmit}
                 className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8"
               >
-                {/* Header remains full width */}
+                {/* Header */}
                 <div className="lg:col-span-2 flex justify-between items-center mb-2 md:mb-4">
                   <h3 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter">
                     System Configuration
@@ -386,12 +478,35 @@ const handleSubmit = async (e) => {
 
                 {/* Left Column */}
                 <div className="space-y-6">
-                  <InputField
-                    label="Asset Visual URL"
+                  <EmojiPickerInput
+                    label="Asset Visual Identifier"
                     value={formData.image}
                     onChange={(v) => setFormData({ ...formData, image: v })}
-                    placeholder="https://..."
+                    isDarkMode={isDarkMode}
+                    placeholder="Type emoji or paste URL..."
+                    showPicker={showPicker}
+                    setShowPicker={setShowPicker}
+                    pickerRef={pickerRef}
+                    emojis={[
+                      "📦",
+                      "💻",
+                      "🖥️",
+                      "🖱️",
+                      "⌨️",
+                      "🎧",
+                      "📱",
+                      "💾",
+                      "🎮",
+                      "🔌",
+                      "⚡",
+                      "⚙️",
+                      "🔋",
+                      "📡",
+                      "🎥",
+                      "📷",
+                    ]}
                   />
+
                   <InputField
                     label="Asset Name"
                     value={formData.name}
@@ -409,20 +524,14 @@ const handleSubmit = async (e) => {
                       }
                       className="w-full bg-slate-500/5 p-4 md:p-5 rounded-2xl md:rounded-3xl border border-slate-800/20 font-bold outline-none focus:border-amber-500 transition-all text-sm"
                     >
-                      <optgroup
-                        label="Core Components"
-                        className="bg-[#0d1117] text-slate-400"
-                      >
+                      <optgroup label="Core Components" className="bg-[#0d1117] text-slate-400">
                         <option>Processors</option>
                         <option>Graphics Cards</option>
                         <option>Motherboards</option>
                         <option>Memory (RAM)</option>
                         <option>Storage (SSD/HDD)</option>
                       </optgroup>
-                      <optgroup
-                        label="Systems & Gear"
-                        className="bg-[#0d1117] text-slate-400"
-                      >
+                      <optgroup label="Systems & Gear" className="bg-[#0d1117] text-slate-400">
                         <option>Laptops</option>
                         <option>Monitors</option>
                         <option>Audio Gear</option>
@@ -452,9 +561,7 @@ const handleSubmit = async (e) => {
                         label="Original ($)"
                         type="number"
                         value={formData.originalPrice}
-                        onChange={(v) =>
-                          handlePricingChange("originalPrice", v)
-                        }
+                        onChange={(v) => handlePricingChange("originalPrice", v)}
                       />
                       <InputField
                         label="Discount (%)"
@@ -476,9 +583,7 @@ const handleSubmit = async (e) => {
                       label="Stock"
                       type="number"
                       value={formData.quantity}
-                      onChange={(v) =>
-                        setFormData({ ...formData, quantity: v })
-                      }
+                      onChange={(v) => setFormData({ ...formData, quantity: v })}
                     />
                     <InputField
                       label="Status"
@@ -496,10 +601,7 @@ const handleSubmit = async (e) => {
                       type="date"
                       value={formData.arrivalDate || ""}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          arrivalDate: e.target.value,
-                        })
+                        setFormData({ ...formData, arrivalDate: e.target.value })
                       }
                       className="w-full bg-slate-500/5 p-4 rounded-2xl border border-slate-800/20 font-mono text-xs outline-none focus:border-emerald-500"
                     />
@@ -510,24 +612,22 @@ const handleSubmit = async (e) => {
                       Deployment Target
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                      {["Homepage", "Category", "New Arrivals", "Sale"].map(
-                        (loc) => (
-                          <button
-                            key={loc}
-                            type="button"
-                            onClick={() =>
-                              setFormData({ ...formData, targetPage: loc })
-                            }
-                            className={`py-3 md:py-4 cursor-pointer rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase border transition-all ${
-                              formData.targetPage === loc
-                                ? "bg-amber-500 border-amber-500 text-black"
-                                : "bg-transparent border-slate-800 text-slate-500 hover:border-amber-500/50"
-                            }`}
-                          >
-                            {loc}
-                          </button>
-                        ),
-                      )}
+                      {["Homepage", "Category", "New Arrivals", "Sale"].map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          onClick={() =>
+                            setFormData({ ...formData, targetPage: loc })
+                          }
+                          className={`py-3 md:py-4 cursor-pointer rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase border transition-all ${
+                            formData.targetPage === loc
+                              ? "bg-amber-500 border-amber-500 text-black"
+                              : "bg-transparent border-slate-800 text-slate-500 hover:border-amber-500/50"
+                          }`}
+                        >
+                          {loc}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -545,6 +645,7 @@ const handleSubmit = async (e) => {
         )}
       </AnimatePresence>
 
+      {/* DELETE CONFIRMATION */}
       <AnimatePresence>
         {deleteConfirm && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md">
@@ -579,7 +680,11 @@ const handleSubmit = async (e) => {
 
 const StatBox = ({ label, value, color, isDarkMode }) => (
   <div
-    className={`px-8 py-5 rounded-[2rem] border min-w-[140px] text-center ${isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white border-slate-200 shadow-xl"}`}
+    className={`px-8 py-5 rounded-[2rem] border min-w-[140px] text-center ${
+      isDarkMode
+        ? "bg-[#0d1117] border-slate-800"
+        : "bg-white border-slate-200 shadow-xl"
+    }`}
   >
     <p className={`text-2xl font-black tracking-tighter ${color}`}>{value}</p>
     <p className="text-[9px] font-black uppercase text-slate-500 tracking-widest mt-1">
