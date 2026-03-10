@@ -34,6 +34,7 @@ import UserOrders from "../pages/UserOrder";
 import ReturnProgress from "../component/ReturnProgress";
 import Return from "../views/Return";
 import ResetPassword from "../component/ResetPassword";
+import OrderDetails from "../pages/OrderDetails";
 
 const Routes = createBrowserRouter([
   {
@@ -166,6 +167,10 @@ const Routes = createBrowserRouter([
       {
         path: "/resetpassword",
         element: <ResetPassword></ResetPassword>
+      },
+      {
+        path: "/orderdetails/:orderId",
+        element: <OrderDetails></OrderDetails>
       }
     ],
   },

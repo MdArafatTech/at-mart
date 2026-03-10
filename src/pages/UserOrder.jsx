@@ -1,29 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FaBox, FaCheckCircle, FaTruck, FaHome, FaClock, 
-  FaCloud, FaSearch, FaUser, FaShoppingBag, FaTrash, FaTimesCircle, FaExclamationTriangle 
+  FaBox, FaCheckCircle, FaTruck, FaClock, 
+  FaCloud, FaSearch, FaTrash, 
+  FaTimesCircle, FaArrowRight, FaLock, FaSpinner
 } from "react-icons/fa";
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from "../context/ThemeContext"; 
-import { db } from '../firebase/Firebase'; 
+import { db, auth } from '../firebase/Firebase'; 
+import { onAuthStateChanged } from "firebase/auth"; 
 import { 
   collection, onSnapshot, query, orderBy, 
-  where, deleteDoc, doc, updateDoc 
+  where, deleteDoc, doc
 } from "firebase/firestore";
 
-const UserOrders = ({ userEmail }) => {
+const UserOrders = () => {
   const { isDarkMode } = useTheme(); 
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [myOrders, setMyOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
 
-  // --- 1. REAL-TIME CLOUD SYNC ---
+  // 1. MONITOR AUTH STATE (Crucial for persistence on refresh)
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. FETCH ORDERS (Only runs when user is confirmed)
+  useEffect(() => {
+    // If we are still checking if the user is logged in, don't do anything yet
+    if (authLoading) return;
+
+    // If auth check finished and there is no user, clear orders
+    if (!user) {
+      setMyOrders([]);
+      return;
+    }
+
+    // Now that we have a user.email, run the query
     const ordersRef = collection(db, "orders");
-    const q = userEmail 
-      ? query(ordersRef, where("customerEmail", "==", userEmail), orderBy("createdAt", "desc"))
-      : query(ordersRef, orderBy("createdAt", "desc"));
+    const q = query(
+      ordersRef, 
+      where("customerEmail", "==", user.email), 
+      orderBy("createdAt", "desc")
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({
@@ -31,201 +56,208 @@ const UserOrders = ({ userEmail }) => {
         ...doc.data()
       }));
       setMyOrders(ordersData);
+    }, (error) => {
+      console.error("Firestore Error:", error);
     });
 
     return () => unsubscribe(); 
-  }, [userEmail]);
+  }, [user, authLoading]); // Re-run when auth state changes or loading finishes
 
-  // --- 2. LOGIC: PURGE RECORD ---
-  const purgeOrder = async (orderDocId) => {
-    if (window.confirm("Purge this record from cloud history?")) {
-      try {
-        await deleteDoc(doc(db, "orders", orderDocId));
-      } catch (err) {
-        alert("Purge Failure.");
-      }
-    }
+  // --- STATS CALCULATION ---
+  const stats = {
+    total: myOrders.length,
+    pending: myOrders.filter(o => ["pending", "confirmed", "processing"].includes(o.status?.toLowerCase())).length,
+    active: myOrders.filter(o => ["verified", "accepted", "preparing", "shipped", "in transit", "out for delivery"].includes(o.status?.toLowerCase())).length,
+    completed: myOrders.filter(o => ["delivered", "completed"].includes(o.status?.toLowerCase())).length,
   };
 
-  // --- 3. LOGIC: ABORT PROTOCOL ---
-  const cancelOrder = async (orderDocId, currentStatus) => {
-    const step = getStatusStep(currentStatus);
-    // Only allow cancellation if in the first step (Pending/Confirmed)
-    if (step === 1) {
-      const reasons = ["Price issue", "Address error", "Changed mind", "Ordered by mistake"];
-      const selection = window.prompt(`Reason for Abort?\n1. ${reasons[0]}\n2. ${reasons[1]}\n3. ${reasons[2]}\n4. ${reasons[3]}`);
-      
-      if (!selection) return;
-      const finalReason = reasons[parseInt(selection) - 1] || selection;
-
-      try {
-        await updateDoc(doc(db, "orders", orderDocId), {
-          status: "Cancelled",
-          cancellationReason: finalReason,
-          cancelledAt: new Date().toISOString()
-        });
-      } catch (err) {
-        alert("Sync Error.");
-      }
-    } else {
-      alert("Order has already been verified and cannot be aborted.");
-    }
-  };
-
-  // --- 4. STEP CALCULATION (Fixed & Precise) ---
   const getStatusStep = (status) => {
     const s = status?.toLowerCase() || "";
-
     if (s === "cancelled") return 0;
-    
-    // Step 1: Default/Initial State
-    // If it's pending, confirmed (meaning payment ok, but not checked), or processing
-    if (s.includes("pending") || s.includes("confirmed") || s.includes("processing") || s === "") {
-      return 1;
-    }
-    
-    // Step 2: Admin has physically verified/accepted the order
-    if (s === "verified" || s === "accepted" || s === "preparing") {
-      return 2;
-    }
-    
-    // Step 3: Logistics handoff
-    if (s === "shipped" || s === "in transit" || s === "out for delivery") {
-      return 3;
-    }
-    
-    // Step 4: Final Closure
-    if (s === "delivered" || s === "completed") {
-      return 4;
-    }
+    if (s.includes("pending") || s.includes("confirmed") || s.includes("processing")) return 1;
+    if (s === "verified" || s === "accepted" || s === "preparing") return 2;
+    if (s === "shipped" || s === "in transit" || s === "out for delivery") return 3;
+    if (s === "delivered" || s === "completed") return 4;
+    return 1;
+  };
 
-    return 1; // Default to step 1 for any new unknown status
+  const purgeOrder = async (e, orderDocId) => {
+    e.stopPropagation();
+    if (window.confirm("Purge this record from cloud history?")) {
+      try { await deleteDoc(doc(db, "orders", orderDocId)); } catch (err) { alert("Purge Failure."); }
+    }
   };
 
   const filteredOrders = myOrders.filter(o => 
     (o.displayId || o.orderId || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
-    <div className={`min-h-screen p-4 md:p-10 transition-all duration-500 ${isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"}`}>
-      
-      <div className="max-w-6xl mx-auto mb-10">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-4xl font-black italic uppercase tracking-tighter">Fleet <span className="text-amber-500 text-5xl">History</span></h1>
-          <p className="text-[10px] font-bold opacity-40 tracking-[0.4em] uppercase mt-4 flex items-center gap-2">
-            <FaCloud className="text-sky-500 animate-pulse" /> Active Transmission Feed
-          </p>
-        </motion.div>
+  // --- A. LOADING STATE ---
+  if (authLoading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? "bg-[#050505]" : "bg-slate-50"}`}>
+        <div className="flex flex-col items-center gap-4">
+          <FaSpinner className="animate-spin text-amber-500 text-4xl" />
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">Syncing Encryption...</p>
+        </div>
+      </div>
+    );
+  }
 
-        <div className="mt-8 relative max-w-md">
+  // --- B. UNAUTHENTICATED STATE ---
+  if (!user) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center font-mono p-6 ${isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"}`}>
+        <div className="p-8 bg-amber-500/10 rounded-full mb-6">
+          <FaLock className="text-5xl text-amber-500" />
+        </div>
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter">Access Denied</h2>
+        <p className="text-gray-500 text-sm mt-2 max-w-xs text-center uppercase font-bold tracking-widest">
+          Login required to access secure fleet records.
+        </p>
+        <button 
+          onClick={() => navigate('/login')}
+          className="mt-8 px-10 py-4 bg-amber-500 text-black font-black uppercase text-xs tracking-[0.2em] rounded-2xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20"
+        >
+          Authenticate Terminal
+        </button>
+      </div>
+    );
+  }
+
+  // --- C. AUTHORIZED DASHBOARD ---
+  return (
+    <div className={`min-h-screen p-6 md:p-12 transition-all duration-500 ${isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"}`}>
+      
+      <div className="max-w-7xl mx-auto mb-16">
+        <div className="flex flex-col xl:flex-row gap-10 items-start xl:items-center justify-between">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-none text-black dark:text-white">
+             order <span className="text-amber-500">History</span>
+            </h1>
+            <p className="text-[10px] font-bold opacity-40 tracking-[0.5em] uppercase mt-4 flex items-center gap-3">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" /> Authorized: {user.email}
+            </p>
+          </motion.div>
+
+          {/* STATS TILES */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full xl:w-auto">
+            {[
+              { label: "Live Nodes", val: stats.total, color: "text-amber-500", icon: <FaCloud /> },
+              { label: "Pending", val: stats.pending, color: "text-sky-500", icon: <FaClock /> },
+              { label: "In Transit", val: stats.active, color: "text-orange-500", icon: <FaTruck /> },
+              { label: "Finished", val: stats.completed, color: "text-emerald-500", icon: <FaCheckCircle /> }
+            ].map((stat, i) => (
+              <div key={i} className={`p-6 rounded-[2rem] border min-w-[140px] ${isDarkMode ? "bg-white/5 border-white/5" : "bg-white border-slate-100 shadow-lg"}`}>
+                <div className={`${stat.color} text-xl mb-2`}>{stat.icon}</div>
+                <p className="text-3xl font-black italic tracking-tighter leading-none">{stat.val}</p>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mt-1">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* SEARCH */}
+        <div className="mt-12 relative max-w-md group">
           <input 
-            type="text" placeholder="Search Order ID..." value={searchQuery}
+            type="text" placeholder="TRACK_ID_SEARCH..." value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full p-6 pl-14 rounded-3xl text-[10px] font-black outline-none border transition-all uppercase tracking-widest ${isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 shadow-xl"}`}
+            className={`w-full p-6 pl-14 rounded-2xl text-[10px] font-black outline-none border transition-all uppercase tracking-widest ${
+              isDarkMode ? "bg-white/5 border-white/10 focus:border-amber-500 text-white" : "bg-white border-slate-200 shadow-xl focus:border-amber-500"
+            }`}
           />
-          <FaSearch className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" />
+          <FaSearch className="absolute left-6 top-1/2 -translate-y-1/2 text-amber-500" />
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 gap-10">
+      {/* GRID */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
         <AnimatePresence mode="popLayout">
-          {filteredOrders.map((order) => {
-            const step = getStatusStep(order.status);
-            const isCancelled = order.status === "Cancelled";
-            const trackingId = order.displayId || order.orderId || order.id;
+          {filteredOrders.length === 0 ? (
+            <div className="col-span-full py-20 text-center opacity-30 italic uppercase font-black tracking-widest text-sm">
+              No nodes detected in this sector.
+            </div>
+          ) : (
+            filteredOrders.map((order) => {
+              const step = getStatusStep(order.status);
+              const isCancelled = order.status?.toLowerCase() === "cancelled";
+              const trackingId = order.displayId || order.id;
 
-            return (
-              <motion.div
-                key={order.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                className={`p-8 md:p-10 rounded-[3.5rem] border relative overflow-hidden transition-all ${isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white border-slate-100 shadow-2xl"}`}
-              >
-                {/* HEADER */}
-                <div className="flex flex-col md:flex-row justify-between items-start mb-12 gap-6">
-                  <div className="flex items-center gap-6">
-                    <div className={`w-20 h-20 rounded-[2.2rem] flex items-center justify-center text-4xl ${isDarkMode ? "bg-black" : "bg-slate-50 shadow-inner"}`}>
-                        <FaShoppingBag className={isCancelled ? "text-slate-700" : "text-amber-500"} />
+              return (
+                <motion.div
+                  key={order.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  whileHover={{ y: -8 }}
+                  onClick={() => navigate(`/orderdetails/${order.id}`)}
+                  className={`group cursor-pointer p-8 rounded-[2.5rem] border relative overflow-hidden transition-all duration-500 ${
+                    isDarkMode 
+                    ? "bg-[#0d1117] border-white/5 hover:border-amber-500/50 shadow-2xl" 
+                    : "bg-white border-slate-100 shadow-xl hover:shadow-2xl hover:border-amber-500"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl ${
+                      isCancelled ? "bg-rose-500/10 text-rose-500" : "bg-amber-500/10 text-amber-500"
+                    }`}>
+                      {isCancelled ? <FaTimesCircle /> : <FaBox />}
                     </div>
-                    <div>
-                        <h2 className={`text-3xl font-black italic uppercase tracking-tighter ${isCancelled ? "text-slate-700 line-through" : ""}`}>
-                          {order.displayId || order.orderId}
-                        </h2>
-                        <p className="text-[10px] font-black opacity-30 uppercase tracking-widest">
-                          Logged: {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toDateString() : 'Syncing...'}
-                        </p>
-                    </div>
-                  </div>
-                  <div className="text-left md:text-right">
-                    <p className="text-4xl font-black italic tracking-tighter text-amber-500">${order.totalAmount || order.total}</p>
-                    <span className={`text-[8px] font-black uppercase px-3 py-1 rounded-full ${isCancelled ? "bg-rose-500/10 text-rose-500" : "bg-emerald-500/10 text-emerald-500"}`}>
-                      {order.status || "Pending"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* --- PROGRESS TIMELINE --- */}
-                {!isCancelled && (
-                  <div className="relative flex justify-between items-center mb-12 max-w-3xl mx-auto px-6">
-                    {/* Background Line */}
-                    <div className={`absolute h-[2px] w-[88%] left-[6%] top-1/2 -translate-y-1/2 ${isDarkMode ? "bg-slate-800" : "bg-slate-200"}`} />
-                    
-                    {/* Active Progress Line */}
-                    <motion.div 
-                      initial={{ width: 0 }} 
-                      animate={{ width: `${((step - 1) / 3) * 88}%` }} 
-                      className="absolute h-[2px] bg-amber-500 top-1/2 left-[6%] -translate-y-1/2 shadow-[0_0_15px_#f59e0b]" 
-                    />
-
-                    {[{l:"Pending",i:<FaClock/>},{l:"Verified",i:<FaCheckCircle/>},{l:"Shipped",i:<FaTruck/>},{l:"Delivered",i:<FaHome/>}]
-                    .map((s, idx) => (
-                      <div key={idx} className="relative z-10 flex flex-col items-center">
-                        <motion.div 
-                          animate={{ scale: step > idx ? 1.1 : 1 }}
-                          className={`w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center border-4 transition-all duration-700 ${
-                            step > idx 
-                            ? "bg-amber-500 border-amber-500 text-black shadow-lg" 
-                            : isDarkMode ? "bg-slate-900 border-slate-800 text-slate-700" : "bg-white border-slate-200 text-slate-300"
-                          }`}
-                        >
-                          {s.i}
-                        </motion.div>
-                        <span className={`text-[8px] font-black uppercase mt-3 tracking-tighter ${step > idx ? "opacity-100 text-amber-500" : "opacity-30"}`}>{s.l}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* CANCELLATION BOX */}
-                {isCancelled && (
-                  <div className="mb-10 p-6 bg-rose-500/5 border border-rose-500/10 rounded-[2rem] flex gap-4">
-                    <FaExclamationTriangle className="text-rose-500 mt-1" />
-                    <div>
-                      <p className="text-[9px] font-black uppercase text-rose-500 tracking-widest mb-1">cancel order</p>
-                      <p className="text-xs font-bold italic opacity-60">Reason: {order.cancellationReason || "Manual Override"}</p>
+                    <div className="text-right">
+                      <p className="text-xl font-black italic tracking-tighter text-amber-500">${Number(order.totalAmount || 0).toFixed(2)}</p>
+                      <p className="text-[7px] font-black uppercase opacity-30">
+                        {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : 'Syncing'}
+                      </p>
                     </div>
                   </div>
-                )}
 
-                {/* FOOTER ACTIONS */}
-                <div className="flex flex-wrap justify-end gap-4 border-t border-slate-500/10 pt-8">
-                  <button onClick={() => purgeOrder(order.id)} className="p-4 rounded-2xl bg-slate-500/5 text-slate-500 hover:bg-rose-500 hover:text-white transition-all cursor-pointer">
-                    <FaTrash size={14} />
-                  </button>
-
-                  {step === 1 && !isCancelled && (
-                    <button onClick={() => cancelOrder(order.id, order.status)} className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-orange-600 text-white font-black text-[10px] uppercase hover:bg-orange-700 transition-all cursor-pointer shadow-lg shadow-orange-900/20">
-                      <FaTimesCircle /> cancel order
-                    </button>
-                  )}
+                  <div className="mb-6">
+                    <h3 className={`text-lg font-black uppercase italic tracking-tight ${isCancelled ? "opacity-30 line-through" : ""}`}>
+                      {order.displayId || "NODE_UNSET"}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isCancelled ? "bg-rose-500" : "bg-emerald-500 animate-pulse"}`} />
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${isCancelled ? "text-rose-500" : "text-emerald-500"}`}>
+                        {order.status || "Initialized"}
+                      </span>
+                    </div>
+                  </div>
 
                   {!isCancelled && (
-                    <button onClick={() => navigate(`/ordertracking/${trackingId}`)} className={`px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest cursor-pointer transition-all ${isDarkMode ? "bg-white text-black hover:bg-amber-500" : "bg-slate-900 text-white hover:bg-amber-500 hover:text-black"}`}>
-                      Track order
-                    </button>
+                    <div className="mb-8">
+                      <div className={`h-1 w-full rounded-full overflow-hidden ${isDarkMode ? "bg-white/5" : "bg-slate-100"}`}>
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(step / 4) * 100}%` }}
+                          className="h-full bg-amber-500"
+                        />
+                      </div>
+                    </div>
                   )}
-                </div>
-              </motion.div>
-            );
-          })}
+
+                  <div className="flex items-center justify-between pt-6 border-t border-white/5">
+                    <button 
+                      onClick={(e) => purgeOrder(e, order.id)}
+                      className="w-9 h-9 rounded-lg bg-rose-500/5 text-rose-500 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+                    >
+                      <FaTrash size={10} />
+                    </button>
+                    
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/ordertracking/${trackingId}`);
+                      }}
+                      className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10 p-2 rounded-lg transition-all"
+                    >
+                      Track Node <FaArrowRight />
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
         </AnimatePresence>
       </div>
     </div>

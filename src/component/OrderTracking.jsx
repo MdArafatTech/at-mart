@@ -3,8 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   FaBox, FaTruck, FaCheckCircle, FaMapMarkerAlt, 
-  FaCalendarAlt, FaSearch, FaHeadset, FaFileInvoiceDollar,
-  FaShieldAlt, FaSync, FaArrowLeft, FaShoppingBasket
+  FaCalendarAlt, FaSearch, FaArrowLeft, FaShoppingBasket
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 
@@ -33,24 +32,25 @@ const OrderTracking = () => {
       setIsSearching(true);
       setError(null);
 
-      // We query displayId to match your user-facing IDs
+      // Querying by displayId (AtShop standard)
       const q = query(collection(db, "orders"), where("displayId", "==", urlOrderId));
 
       unsubscribe = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
           const foundData = snapshot.docs[0].data();
           
-          const statusMap = { "Pending": 25, "Verified": 50, "Shipped": 75, "Delivered": 100 };
+          // Logic mapping for AtShop statuses
+          const statusMap = { "Pending": 20, "Verified": 50, "Shipped": 75, "Delivered": 100 };
           const currentStatus = foundData.status || "Pending";
 
           setOrder({
             ...foundData,
             progress: statusMap[currentStatus] || 20,
             timeline: [
-              { step: "Order Placed", desc: "Digital manifest created", time: "T-0", status: "complete" },
-              { step: "Verified", desc: "Security & Payment check", time: "T-1", status: currentStatus !== "Pending" ? "complete" : "active" },
-              { step: "Shipped", desc: "Package left warehouse", time: "Transit", status: currentStatus === "Shipped" ? "active" : currentStatus === "Delivered" ? "complete" : "pending" },
-              { step: "Delivered", desc: "Handover complete", time: "Final", status: currentStatus === "Delivered" ? "complete" : "pending" },
+              { step: "Order Placed", desc: "Digital manifest created", status: "complete" },
+              { step: "Verified", desc: "Security & Payment check", status: currentStatus !== "Pending" ? "complete" : "active" },
+              { step: "Shipped", desc: "Package left warehouse", status: currentStatus === "Shipped" ? "active" : currentStatus === "Delivered" ? "complete" : "pending" },
+              { step: "Delivered", desc: "Handover complete", status: currentStatus === "Delivered" ? "complete" : "pending" },
             ]
           });
         } else {
@@ -67,16 +67,6 @@ const OrderTracking = () => {
     e.preventDefault();
     if (!searchId.trim()) return;
     navigate(`/ordertracking/${searchId.trim()}`);
-  };
-
-  const downloadInvoice = () => {
-    const doc = new jsPDF();
-    autoTable(doc, {
-      head: [['Product', 'Qty', 'Price', 'Subtotal']],
-      body: order.items.map(item => [item.name, item.quantity || 1, `$${item.price}`, `$${(item.quantity || 1) * item.price}`]),
-      headStyles: { fillColor: [245, 158, 11] }
-    });
-    doc.save(`Invoice_${order.displayId}.pdf`);
   };
 
   return (
@@ -96,7 +86,7 @@ const OrderTracking = () => {
                 placeholder="TRACK ID..."
                 className="w-full bg-transparent p-3 text-[10px] font-black uppercase outline-none px-6"
               />
-              <button type="submit" className="bg-amber-500 text-black px-6 rounded-r-xl font-black text-[10px]">SYNC</button>
+              <button type="submit" className="bg-amber-500 text-black px-6 rounded-r-xl font-black text-[10px] cursor-pointer">SYNC</button>
             </div>
           </form>
         </div>
@@ -105,14 +95,13 @@ const OrderTracking = () => {
       <main className="max-w-6xl mx-auto px-6 py-12">
         <AnimatePresence mode="wait">
           {!urlOrderId ? (
-            /* EMPTY STATE */
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
                <FaSearch className="text-9xl mx-auto opacity-10 mb-8" />
-               <h2 className="text-4xl font-black italic uppercase italic">Awaiting <span className="text-amber-500">Signal</span></h2>
+               <h2 className="text-4xl font-black italic uppercase">Awaiting <span className="text-amber-500">Signal</span></h2>
                <p className="opacity-40 text-[10px] font-bold mt-4 tracking-[0.4em]">ENTER TRACKING ID TO BEGIN</p>
             </motion.div>
           ) : isSearching ? (
-             <div className="text-center py-20 animate-pulse">Establishing Node Link...</div>
+             <div className="text-center py-20 animate-pulse font-black uppercase tracking-widest text-amber-500">Establishing Node Link...</div>
           ) : order ? (
             <div className="grid lg:grid-cols-3 gap-8">
               
@@ -131,7 +120,7 @@ const OrderTracking = () => {
                     />
                   </div>
 
-                  {/* DARAZ STYLE TIMELINE */}
+                  {/* LOGISTICS TIMELINE */}
                   <div className="space-y-12 pl-6 border-l-2 border-slate-800">
                     {order.timeline.map((item, idx) => (
                       <div key={idx} className="relative">
@@ -155,7 +144,7 @@ const OrderTracking = () => {
                     {order.items?.map((item, i) => (
                       <div key={i} className="flex justify-between items-center p-4 rounded-2xl bg-black/20 border border-white/5">
                         <p className="text-[11px] font-black uppercase italic">{item.name} <span className="text-amber-500 ml-2">x{item.quantity}</span></p>
-                        <p className="text-[11px] font-black italic">${item.price * (item.quantity || 1)}</p>
+                        <p className="text-[11px] font-black italic">${(item.price * (item.quantity || 1)).toFixed(2)}</p>
                       </div>
                     ))}
                   </div>
@@ -174,10 +163,15 @@ const OrderTracking = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  <button onClick={downloadInvoice} className="w-full py-5 bg-amber-500 text-black rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-95 transition-all">
-                    Generate PDF Invoice
-                  </button>
-                  <button className={`w-full py-5 rounded-2xl border font-black text-[10px] uppercase tracking-widest ${isDarkMode ? "border-slate-800 bg-slate-900" : "bg-white border-slate-200 shadow-lg"}`}>
+                  {/* REDIRECT TO ABOUT PAGE CONTACT FORM */}
+                  <button 
+                    onClick={() => navigate('/about#contactform')}
+                    className={`w-full py-5 cursor-pointer rounded-2xl border font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 ${
+                      isDarkMode 
+                      ? "border-slate-800 bg-slate-900 hover:border-amber-500 hover:text-amber-500" 
+                      : "bg-white border-slate-200 shadow-lg hover:bg-slate-50"
+                    }`}
+                  >
                     Report Issue
                   </button>
                 </div>
@@ -185,7 +179,9 @@ const OrderTracking = () => {
 
             </div>
           ) : (
-            <div className="text-center py-20 text-rose-500 font-black uppercase">ERROR: {error}</div>
+            <div className="text-center py-20 text-rose-500 font-black uppercase tracking-widest">
+              NODE_ERROR: {error}
+            </div>
           )}
         </AnimatePresence>
       </main>

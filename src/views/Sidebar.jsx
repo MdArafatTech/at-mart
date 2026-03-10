@@ -105,13 +105,7 @@ const Sidebar = ({ isOpen, setOpen, activeView, setActiveView, isDarkMode, onLog
 
         {/* Footer Area / Profile Snapshot */}
         <div className="p-6 mt-auto shrink-0 space-y-4">
-          <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100'} flex items-center gap-3`}>
-             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-600" />
-             <div className="overflow-hidden">
-                <p className="text-[10px] font-black truncate uppercase">{auth.currentUser?.email?.split('@')[0] || 'Admin'}</p>
-                <p className="text-[8px] text-emerald-500 font-bold uppercase tracking-widest">Online</p>
-             </div>
-          </div>
+     
 
           <button 
             onClick={() => {

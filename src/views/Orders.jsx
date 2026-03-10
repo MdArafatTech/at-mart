@@ -17,7 +17,7 @@ const Orders = ({ isDarkMode }) => {
     const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({
-        id: doc.id,
+        id: doc.id, // This is the unique Firebase Document ID
         ...doc.data()
       }));
       setAllOrders(ordersData);
@@ -42,7 +42,6 @@ const Orders = ({ isDarkMode }) => {
       await updateDoc(orderRef, { status: newStatus });
     } catch (err) {
       console.error("Transmission Error:", err);
-      alert("Terminal Error: Cloud update failed.");
     }
   };
 
@@ -84,9 +83,7 @@ const Orders = ({ isDarkMode }) => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={`w-full p-4 pl-12 rounded-2xl text-[11px] font-black outline-none border transition-all tracking-widest uppercase ${
-              isDarkMode 
-              ? "bg-[#0d1117] border-slate-800 text-white focus:border-amber-500" 
-              : "bg-white border-slate-200 shadow-lg focus:border-amber-500"
+              isDarkMode ? "bg-[#0d1117] border-slate-800 text-white focus:border-amber-500" : "bg-white border-slate-200 shadow-lg focus:border-amber-500"
             }`}
           />
           <FaSearch className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
@@ -100,9 +97,7 @@ const Orders = ({ isDarkMode }) => {
             key={status} 
             onClick={() => setFilterStatus(status)}
             className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border-2 flex-shrink-0 ${
-              filterStatus === status 
-              ? 'bg-amber-500 border-amber-500 text-black shadow-lg scale-95' 
-              : isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-white border-slate-100 text-slate-400'
+              filterStatus === status ? 'bg-amber-500 border-amber-500 text-black shadow-lg scale-95' : isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-white border-slate-100 text-slate-400'
             }`}
           >
             {status}
@@ -122,12 +117,9 @@ const Orders = ({ isDarkMode }) => {
                 exit={{ opacity: 0, scale: 0.9 }}
                 key={order.id}
                 className={`relative group p-6 rounded-[2rem] border transition-all hover:shadow-2xl ${
-                  isDarkMode 
-                  ? "bg-[#0d1117] border-slate-800 hover:border-amber-500/50" 
-                  : "bg-white border-slate-100 shadow-sm hover:border-amber-200"
+                  isDarkMode ? "bg-[#0d1117] border-slate-800 hover:border-amber-500/50" : "bg-white border-slate-100 shadow-sm hover:border-amber-200"
                 }`}
               >
-                {/* Order ID & Date */}
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <span className="text-[10px] font-bold opacity-40 uppercase tracking-tighter flex items-center gap-1 mb-1">
@@ -142,7 +134,6 @@ const Orders = ({ isDarkMode }) => {
                   </div>
                 </div>
 
-                {/* Customer Info */}
                 <div className="space-y-3 mb-6">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-slate-500/10 flex items-center justify-center text-slate-500">
@@ -153,23 +144,14 @@ const Orders = ({ isDarkMode }) => {
                       <p className="text-[9px] font-medium opacity-40 truncate max-w-[150px]">{order.customerEmail}</p>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-3 opacity-60">
-                    <FaCalendarAlt size={10} className="ml-2"/>
-                    <p className="text-[9px] font-bold uppercase tracking-widest">
-                      {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : 'Syncing...'}
-                    </p>
-                  </div>
                 </div>
 
-                {/* Amount */}
                 <div className="mb-6">
                   <p className="text-3xl font-black italic text-amber-500 tracking-tighter">
                     ${order.totalAmount || order.total}
                   </p>
                 </div>
 
-                {/* Actions Section */}
                 <div className="pt-4 border-t border-slate-500/10 flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-2">
                     <select 
@@ -179,18 +161,14 @@ const Orders = ({ isDarkMode }) => {
                     >
                       {Object.keys(statusStyles).map(s => <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>)}
                     </select>
-                    
-                    <button 
-                      onClick={() => deleteOrder(order.id)} 
-                      className="p-3 bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
-                    >
+                    <button onClick={() => deleteOrder(order.id)} className="p-3 bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all cursor-pointer">
                       <FaTrash size={12} />
                     </button>
                   </div>
 
                   <button 
-                    onClick={() => navigate(`/ordertracking/${order.orderId}`)} 
-                    className="w-full py-3 flex items-center justify-center gap-2 rounded-xl bg-slate-800 text-white hover:bg-amber-500 hover:text-black font-black text-[10px] uppercase tracking-widest transition-all"
+                    onClick={() => navigate(`/orderdetails/${order.id}`)} // FIXED: Sending Firebase ID
+                    className="w-full py-3 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-slate-800 text-white hover:bg-amber-500 hover:text-black font-black text-[10px] uppercase tracking-widest transition-all"
                   >
                     View Details <FaChevronRight size={10} />
                   </button>
@@ -198,9 +176,9 @@ const Orders = ({ isDarkMode }) => {
               </motion.div>
             ))
           ) : (
-            <div className="col-span-full py-20 text-center">
-              <FaExclamationTriangle className="mx-auto text-slate-800/20 mb-6" size={50} />
-              <p className="text-[10px] font-black uppercase opacity-20 tracking-[0.5em]">Zero cloud records in frequency</p>
+            <div className="col-span-full py-20 text-center opacity-20">
+              <FaExclamationTriangle className="mx-auto mb-6" size={50} />
+              <p className="text-[10px] font-black uppercase tracking-[0.5em]">Zero cloud records in frequency</p>
             </div>
           )}
         </AnimatePresence>

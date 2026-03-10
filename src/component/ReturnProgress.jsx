@@ -2,12 +2,21 @@ import React, { useState, useEffect } from "react";
 import { 
   FaBoxOpen, FaTruckLoading, FaSearch, FaCheckDouble, 
   FaCheckCircle, FaSpinner, FaMicrochip, FaHistory,
-  FaSatellite, FaSun, FaMoon, FaHashtag, FaEnvelope, FaLayerGroup
+  FaSatellite, FaHashtag, FaEnvelope, FaLayerGroup, FaLock
 } from "react-icons/fa";
 
 import { useTheme } from "../context/ThemeContext";
-import { db, storage } from "../firebase/Firebase"; 
-import { collection, addDoc, onSnapshot, serverTimestamp, query, where, documentId } from "firebase/firestore";
+import { db, auth } from "../firebase/Firebase"; 
+import { onAuthStateChanged } from "firebase/auth";
+import { 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  serverTimestamp, 
+  query, 
+  where, 
+  orderBy 
+} from "firebase/firestore";
 
 const steps = [
   { id: "pending", label: "PENDING", icon: <FaBoxOpen /> },
@@ -34,7 +43,7 @@ const StatusIcons = ({ status }) => {
               {isActive && index < currentStepIndex ? <FaCheckCircle className="text-base" /> : step.icon}
             </div>
             <span className={`text-[7px] font-black mt-2 tracking-widest uppercase ${
-              isActive ? "text-amber-500" : "text-gray-400 dark:text-zinc-500"
+              isActive ? "text-amber-500" : "text-gray-400 dark:text-zinc-50"
             }`}>
               {step.label}
             </span>
@@ -46,53 +55,105 @@ const StatusIcons = ({ status }) => {
 };
 
 const ReturnRequestPage = () => {
-  const { darkMode, toggleTheme } = useTheme();
+  const { darkMode } = useTheme();
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [activeReturns, setActiveReturns] = useState([]);
   const [formData, setFormData] = useState({ 
-    orderId: "", 
-    productName: "", 
-    reason: "", 
-    qty: "1", 
-    email: "" 
+    orderId: "", productName: "", reason: "", qty: "1", email: "" 
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeReturns, setActiveReturns] = useState([]);
-  const [rmaIds, setRmaIds] = useState(() => JSON.parse(localStorage.getItem("allRmaIds") || "[]"));
 
+  // 1. Monitor Auth State
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-  }, [darkMode]);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+      // Auto-fill email if user is logged in
+      if (currentUser) {
+        setFormData(prev => ({ ...prev, email: currentUser.email || "" }));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
+  // 2. Real-time Subscription to User's specific returns
   useEffect(() => {
-    if (rmaIds.length === 0) return;
-    const q = query(collection(db, "returns"), where(documentId(), "in", rmaIds));
+    if (!user) return;
+
+    // Query filters by UID and orders by timestamp
+    const q = query(
+      collection(db, "returns"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setActiveReturns(docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+      setActiveReturns(docs);
+    }, (error) => {
+      console.error("Firestore Error:", error);
     });
+
     return () => unsub();
-  }, [rmaIds]);
+  }, [user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!user) return;
+
     setIsSubmitting(true);
     try {
-      const docRef = await addDoc(collection(db, "returns"), {
+      await addDoc(collection(db, "returns"), {
         ...formData,
+        userId: user.uid, // Tie data to specific user
         status: "pending",
         createdAt: serverTimestamp(),
       });
-      const updatedIds = [...rmaIds, docRef.id];
-      setRmaIds(updatedIds);
-      localStorage.setItem("allRmaIds", JSON.stringify(updatedIds));
-      setFormData({ orderId: "", productName: "", reason: "", qty: "1", email: "" });
-    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
+      // Reset form but keep the email
+      setFormData({ orderId: "", productName: "", reason: "", qty: "1", email: user.email || "" });
+    } catch (error) {
+      console.error("Submission error:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  // --- LOADING STATE ---
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-black">
+        <FaSpinner className="animate-spin text-amber-500 text-3xl" />
+      </div>
+    );
+  }
+
+  // --- UNAUTHORIZED STATE ---
+  if (!user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-black font-mono px-6">
+        <div className="p-6 bg-zinc-100 dark:bg-zinc-900 rounded-full mb-6">
+          <FaLock className="text-4xl text-amber-500" />
+        </div>
+        <h1 className="text-2xl font-black uppercase italic dark:text-white">Authentication Required</h1>
+        <p className="text-gray-500 dark:text-zinc-500 mt-2 max-w-xs text-center text-sm">
+          Please log in to your AT-mart account to access the RMA return terminal.
+        </p>
+        <button 
+          onClick={() => window.location.href = "/login"} // Adjust to your route
+          className="mt-8 px-8 py-3 bg-amber-500 text-black font-black uppercase text-xs tracking-widest rounded-xl hover:bg-amber-600 transition-all"
+        >
+          Go to Login
+        </button>
+      </div>
+    );
+  }
+
+  // --- AUTHORIZED DASHBOARD ---
   return (
     <div className="min-h-screen transition-colors duration-500 font-mono py-10 px-6 bg-white dark:bg-black text-gray-900 dark:text-zinc-300">
       <div className="max-w-7xl mx-auto">
         
-        {/* --- PROFESSIONAL HEADER --- */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b pb-8 border-gray-100 dark:border-zinc-900 gap-6">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-amber-500 rounded-2xl shadow-lg shadow-amber-500/20">
@@ -104,23 +165,21 @@ const ReturnRequestPage = () => {
                 <span className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded uppercase tracking-widest">
                     <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping" /> System Live
                 </span>
-                <span className="text-[9px] text-gray-400 dark:text-zinc-600 font-bold uppercase tracking-[2px]">Core v4.0</span>
+                <span className="text-[9px] text-gray-400 dark:text-zinc-600 font-bold uppercase tracking-[2px]">USER: {user.email?.split('@')[0]}</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-4 w-full md:w-auto">
             <div className="flex-1 md:flex-none px-6 py-2 rounded-2xl border border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50 text-center">
-                <p className="text-[8px] font-black text-red-400 dark:text-green-300 uppercase mb-0.5">Active Logs</p>
-                <p className="text-xl font-black text-red-500 dark:text-green-500 leading-none">{activeReturns.length}</p>
+                <p className="text-[8px] font-black text-amber-500 uppercase mb-0.5">Your Active Logs</p>
+                <p className="text-xl font-black text-black dark:text-white leading-none">{activeReturns.length}</p>
             </div>
-            
           </div>
         </header>
 
         <div className="grid lg:grid-cols-12 gap-10">
           
-          {/* --- ENHANCED INPUT TERMINAL --- */}
           <div className="lg:col-span-4">
             <div className="p-8 rounded-[2.5rem] border transition-all duration-500 bg-gray-50 dark:bg-zinc-900/40 border-gray-200 dark:border-zinc-800 sticky top-10">
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -146,7 +205,7 @@ const ReturnRequestPage = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black uppercase text-gray-400 dark:text-zinc-500 ml-1 flex items-center gap-1"><FaEnvelope /> Contact Email</label>
-                  <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required className="w-full px-5 py-4 rounded-xl border bg-white dark:bg-black border-gray-200 dark:border-zinc-800 text-black dark:text-white focus:border-amber-500 outline-none text-sm" placeholder="support@user.com" />
+                  <input type="email" value={formData.email} readOnly className="w-full px-5 py-4 rounded-xl border bg-gray-100 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 outline-none text-sm cursor-not-allowed" />
                 </div>
 
                 <div className="space-y-1.5">
@@ -161,45 +220,49 @@ const ReturnRequestPage = () => {
             </div>
           </div>
 
-          {/* --- DASHBOARD SECTION --- */}
           <div className="lg:col-span-8">
             <h3 className="flex items-center gap-3 text-2xl font-black mb-8 italic text-black dark:text-white">
-              <FaHistory className="text-amber-500" /> Active Submissions
+              <FaHistory className="text-amber-500" /> My Return History
             </h3>
 
             <div className="grid gap-6">
-              {activeReturns.map((item) => (
-                <div key={item.id} className="rounded-[2.5rem] p-8 border transition-all bg-white dark:bg-zinc-900/30 border-gray-200 dark:border-zinc-800 hover:border-amber-500/40 shadow-sm relative overflow-hidden group">
-                  <div className="flex flex-col md:flex-row gap-8 items-center">
-                    <div className="w-24 h-24 rounded-[2rem] overflow-hidden border border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-black flex-shrink-0 flex items-center justify-center">
-                      <FaMicrochip className="text-4xl text-gray-300 dark:text-zinc-800 group-hover:text-amber-500/40 transition-colors" />
-                    </div>
+              {activeReturns.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-100 dark:border-zinc-900 rounded-[2.5rem] py-20 flex flex-col items-center justify-center">
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">No active hardware logs found</p>
+                </div>
+              ) : (
+                activeReturns.map((item) => (
+                  <div key={item.id} className="rounded-[2.5rem] p-8 border transition-all bg-white dark:bg-zinc-900/30 border-gray-200 dark:border-zinc-800 hover:border-amber-500/40 shadow-sm relative overflow-hidden group">
+                    <div className="flex flex-col md:flex-row gap-8 items-center">
+                      <div className="w-24 h-24 rounded-[2rem] overflow-hidden border border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-black flex-shrink-0 flex items-center justify-center">
+                        <FaMicrochip className="text-4xl text-gray-300 dark:text-zinc-800 group-hover:text-amber-500/40 transition-colors" />
+                      </div>
 
-                    <div className="flex-1 w-full">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-black text-xl uppercase italic text-black dark:text-white leading-none">{item.productName}</h4>
-                          <div className="flex items-center gap-3 mt-2">
-                            <span className="text-[9px] font-bold text-gray-400 dark:text-zinc-600 uppercase">REF: {item.id.slice(0,8)}</span>
-                            <span className="w-1 h-1 bg-gray-300 dark:bg-zinc-800 rounded-full" />
-                            <span className="text-[9px] font-bold text-amber-500 uppercase">{item.qty} UNIT(S)</span>
+                      <div className="flex-1 w-full">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-black text-xl uppercase italic text-black dark:text-white leading-none">{item.productName}</h4>
+                            <div className="flex items-center gap-3 mt-2">
+                              <span className="text-[9px] font-bold text-gray-400 dark:text-zinc-600 uppercase">REF: {item.id.slice(0,8)}</span>
+                              <span className="w-1 h-1 bg-gray-300 dark:bg-zinc-800 rounded-full" />
+                              <span className="text-[9px] font-bold text-amber-500 uppercase">{item.qty} UNIT(S)</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                              <div className="px-4 py-1 rounded-lg text-[10px] font-black uppercase border border-amber-500/30 text-amber-500 bg-amber-500/5">
+                              {item.status}
+                              </div>
+                              <span className="text-[8px] text-gray-400 font-bold uppercase">{new Date(item.createdAt?.seconds * 1000).toLocaleDateString()}</span>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                            <div className="px-4 py-1 rounded-lg text-[10px] font-black uppercase border border-amber-500/30 text-amber-500 bg-amber-500/5">
-                            {item.status}
-                            </div>
-                            <span className="text-[8px] text-gray-400 font-bold uppercase">{item.email}</span>
-                        </div>
+                        <StatusIcons status={item.status} />
                       </div>
-                      <StatusIcons status={item.status} />
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
-
         </div>
       </div>
     </div>
