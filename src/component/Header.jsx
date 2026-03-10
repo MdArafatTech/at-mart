@@ -83,6 +83,19 @@ const Header = () => {
           
           <SearchBar />
 
+
+
+
+
+
+
+
+
+
+
+
+
+
           <button
             onClick={toggleTheme}
             className={`p-2 rounded-full transition-colors cursor-pointer ${
@@ -91,6 +104,16 @@ const Header = () => {
           >
             {isDarkMode ? <FaSun size={18} /> : <FaMoon size={18} />}
           </button>
+
+
+
+
+
+
+
+
+
+
 
           {/* 3. DYNAMIC CART ICON */}
           <Link to="/cartpage" className="p-2 relative hover:text-amber-500 transition-colors">

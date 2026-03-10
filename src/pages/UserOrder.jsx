@@ -104,26 +104,75 @@ const UserOrders = () => {
     );
   }
 
-  // --- B. UNAUTHENTICATED STATE ---
-  if (!user) {
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center font-mono p-6 ${isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"}`}>
-        <div className="p-8 bg-amber-500/10 rounded-full mb-6">
-          <FaLock className="text-5xl text-amber-500" />
+if (!user) return (
+  <div className={`min-h-screen flex flex-col items-center justify-center font-mono p-6 overflow-hidden transition-colors duration-700 ${isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"}`}>
+    
+    {/* --- DECORATIVE BACKGROUND ELEMENTS --- */}
+    <div className="absolute inset-0 pointer-events-none opacity-20" 
+         style={{ backgroundImage: `radial-gradient(circle at 2px 2px, ${isDarkMode ? '#333' : '#ccc'} 1px, transparent 0)`, backgroundSize: '40px 40px' }}>
+    </div>
+
+    {/* --- CENTRAL CONSOLE --- */}
+    <div className="relative z-10 flex flex-col items-center max-w-md w-full">
+      
+      {/* SCANNING RADAR EFFECT */}
+      <div className="relative mb-12">
+        <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping"></div>
+        <div className="absolute inset-0 rounded-full border border-amber-500/30 animate-pulse scale-150"></div>
+        <div className={`relative p-10 rounded-full border-2 ${isDarkMode ? "bg-black border-white/5" : "bg-white border-slate-200 shadow-2xl"}`}>
+          <FaLock className="text-6xl text-amber-500" />
         </div>
-        <h2 className="text-3xl font-black italic uppercase tracking-tighter">Access Denied</h2>
-        <p className="text-gray-500 text-sm mt-2 max-w-xs text-center uppercase font-bold tracking-widest">
-          Login required to access secure fleet records.
+      </div>
+
+      {/* TEXT CONTENT */}
+      <div className="text-center space-y-3">
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <span className="h-[2px] w-8 bg-amber-500/40"></span>
+          <p className="text-amber-500 text-[10px] font-black uppercase tracking-[0.5em]">System Protected</p>
+          <span className="h-[2px] w-8 bg-amber-500/40"></span>
+        </div>
+        
+        <h2 className="text-5xl font-black italic uppercase tracking-tighter leading-none">
+          Access <span className="text-amber-500">Denied</span>
+        </h2>
+        
+        <p className="text-gray-500 text-[11px] max-w-[280px] mx-auto uppercase font-bold leading-relaxed tracking-widest opacity-80">
+          Unauthorized biometric signature detected. Please verify your identity via the main terminal gateway.
         </p>
+      </div>
+
+      {/* ACTION BUTTON */}
+      <div className="mt-12 w-full flex flex-col items-center gap-6">
         <button 
           onClick={() => navigate('/login')}
-          className="mt-8 px-10 py-4 bg-amber-500 text-black font-black uppercase text-xs tracking-[0.2em] rounded-2xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20"
+          className="group relative w-full py-5 bg-amber-500 text-black font-black uppercase text-xs tracking-[0.3em] rounded-2xl overflow-hidden transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_30px_rgba(245,158,11,0.3)]"
         >
-          Authenticate Terminal
+          {/* Inner Glow Effect */}
+          <div className="absolute inset-0 cursor-pointer bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12"></div>
+          <span className="relative z-10 flex items-center justify-center gap-3">
+            login Terminal
+          </span>
         </button>
+
+        {/* METADATA STATUS */}
+        <div className="flex justify-between w-full px-2 opacity-30 text-[9px] font-black uppercase tracking-widest">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+            Node: 09-DHAKA
+          </div>
+          <div className="flex items-center gap-2">
+            SSL: SECURE
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+          </div>
+        </div>
       </div>
-    );
-  }
+    </div>
+
+    {/* DECORATIVE CORNERS */}
+    <div className="absolute top-10 left-10 w-20 h-20 border-t-2 border-l-2 border-amber-500/20 rounded-tl-3xl"></div>
+    <div className="absolute bottom-10 right-10 w-20 h-20 border-b-2 border-r-2 border-amber-500/20 rounded-br-3xl"></div>
+  </div>
+);
 
   // --- C. AUTHORIZED DASHBOARD ---
   return (
