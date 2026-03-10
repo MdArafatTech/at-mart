@@ -52,20 +52,34 @@ const SalePage = () => {
   };
 
   // Real-time Firestore (unchanged but with error boundary)
-  useEffect(() => {
-    const q = query(collection(db, "products"), where("isOnSale", "==", true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const saleData = snapshot.docs.map(doc => ({
-        id: doc.id, ...doc.data(), originalPrice: doc.data().originalPrice || doc.data().price * 1.3
-      }));
-      setProducts(saleData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Sale Fetch Error:", error);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+useEffect(() => {
+  // Query only items explicitly marked for sale
+  const q = query(
+    collection(db, "products"), 
+    where("isOnSale", "==", true),
+    where("targetPage", "==", "Sale") // Strict exclusivity
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const saleData = snapshot.docs.map(doc => ({
+      id: doc.id, 
+      ...doc.data()
+    }));
+    setProducts(saleData);
+    setLoading(false);
+  });
+  return () => unsubscribe();
+}, []);
+
+
+
+
+
+
+
+
+
+
 
   // Memoized search filter
   const memoFiltered = useMemo(() => 

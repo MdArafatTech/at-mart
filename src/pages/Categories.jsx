@@ -11,6 +11,14 @@ import {
   FaArrowRight, FaArrowLeft, FaShoppingCart, FaCheckCircle, FaTimes, FaTrash, FaSatellite 
 } from "react-icons/fa";
 
+import {  where } from "firebase/firestore";
+
+
+
+
+
+
+
 // Static UI Configuration for Categories
 const CATEGORY_MAP = [
   // --- CORE COMPONENTS ---
@@ -36,6 +44,7 @@ const CATEGORY_MAP = [
   { id: 16, name: "Pre-built PCs", icon: "🤖", desc: "Plug & play power.", spec: "Stress Tested", offer: "2-Year Warranty" },
   { id: 17, name: "Handheld Consoles", icon: "🕹️", desc: "Gaming on the go.", spec: "RDNA 3 Graphics", offer: "Travel Case Inc." },
   { id: 18, name: "Accessories", icon: "🔌", desc: "Essential add-ons.", spec: "USB-C Ecosystem", offer: "Buy 3 for $20" },
+  { id: 19, name: "Mobile", icon: "📱", desc: "ECutting-edge mobile devices", spec: "5G Ready", offer: "Trade Program" },
 ];
 const CategoriesPage = () => {
   const { isDarkMode } = useTheme();
@@ -48,18 +57,34 @@ const CategoriesPage = () => {
   const [loading, setLoading] = useState(true);
 
   // --- 1. REAL-TIME DATABASE SYNC ---
-  useEffect(() => {
-    const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const productData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setDbProducts(productData);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+useEffect(() => {
+  setLoading(true);
+  
+  // Logic: 
+  // 1. Must be assigned to 'Homepage'
+  // 2. Must NOT be on sale
+  // 3. Ordered by newest first
+  const q = query(
+    collection(db, "products"), 
+    where("targetPage", "==", "Homepage"),
+    where("isOnSale", "==", false),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const productData = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    setDbProducts(productData);
+    setLoading(false);
+  }, (error) => {
+    console.error("Firestore Sync Error:", error);
+    setLoading(false);
+  });
+
+  return () => unsubscribe();
+}, []);
 
   // --- 2. SEARCH & CATEGORY FILTERING ---
   const filteredProducts = useMemo(() => {

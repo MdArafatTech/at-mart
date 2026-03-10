@@ -9,6 +9,7 @@ import {
 } from "react-icons/fa";
 import { FaMessage } from 'react-icons/fa6';
 import { AiFillProduct } from 'react-icons/ai';
+import { GiReturnArrow } from 'react-icons/gi';
 
 const NavItem = ({ icon, label, id, active, onClick, isDarkMode }) => (
   <div 
@@ -45,10 +46,12 @@ const Sidebar = ({ isOpen, setOpen, activeView, setActiveView, isDarkMode, onLog
   const menu = [
     { id: "overview", label: "Overview", icon: <FaChartLine /> },
     { id: "orders", label: "Orders", icon: <FaShoppingBag /> },
+     { id: "return", label: "Return", icon: <GiReturnArrow/> },
     { id: "customers", label: "Customers", icon: <FaUser /> },
     { id: "adminchat", label: "Admin Chat", icon: <FaMessage /> },
     { id: "products", label: "Add Product", icon: <AiFillProduct /> },
     { id: "settings", label: "Settings", icon: <FaCog /> },
+     
   ];
 
   return (

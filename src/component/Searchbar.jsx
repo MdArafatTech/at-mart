@@ -1,25 +1,59 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FaSearch, FaTimes, FaHistory, FaArrowRight } from "react-icons/fa";
-import { useNavigate, useLocation } from "react-router-dom";
+import { FaSearch, FaTimes, FaHistory, FaArrowRight, FaBox } from "react-icons/fa";
 import { useSearch } from "../context/SearchContext";
 import { useTheme } from "../context/ThemeContext";
 import { motion, AnimatePresence } from "framer-motion";
+import { db } from "../firebase/Firebase"; // Ensure your path is correct
+import { collection, query, getDocs, limit } from "firebase/firestore";
 
 const SearchBar = () => {
   const { searchQuery, setSearchQuery } = useSearch();
   const { isDarkMode } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const [suggestions, setSuggestions] = useState([]); // Now dynamic
+  const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef(null);
 
-  // Mock Suggestions 
-  const suggestions = ["Latest Trends", "Summer Collection", "Best Sellers", "New Arrivals", "Discounts"];
-  
-  const filteredSuggestions = suggestions.filter(item => 
-    item.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  // --- FIREBASE SEARCH LOGIC ---
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (inputValue.length < 2) {
+        setSuggestions(["Latest Trends", "Processors", "Laptops"]); // Default fallbacks
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const q = query(collection(db, "products"), limit(100));
+        const querySnapshot = await getDocs(q);
+        
+        const allProducts = querySnapshot.docs.map(doc => ({
+          name: doc.data().name,
+          category: doc.data().category
+        }));
+
+        // Client-side filtering for better UX/speed
+        const filtered = allProducts
+          .filter(p => 
+            p.name.toLowerCase().includes(inputValue.toLowerCase()) ||
+            p.category.toLowerCase().includes(inputValue.toLowerCase())
+          )
+          .map(p => p.name)
+          .slice(0, 6); // Top 6 matches
+
+        setSuggestions(filtered.length > 0 ? [...new Set(filtered)] : ["No matches found"]);
+      } catch (error) {
+        console.error("Search Error:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Debounce to prevent hitting Firebase on every single keystroke
+    const timeoutId = setTimeout(() => fetchSuggestions(), 300);
+    return () => clearTimeout(timeoutId);
+  }, [inputValue]);
 
   useEffect(() => { setInputValue(searchQuery); }, [searchQuery]);
 
@@ -30,37 +64,25 @@ const SearchBar = () => {
     }
   }, [isOpen]);
 
-  // ✅ FIX: Removed navigation from here. 
-  // It now only updates the context so current page can filter results.
   const handleSearch = (e) => {
     const value = e.target.value;
     setInputValue(value);
     setSearchQuery(value); 
   };
 
-  // ✅ NEW: Handle Enter key to close the overlay without redirecting
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      setIsOpen(false);
-      // Optional: If input is empty, reset everything
-      if (inputValue.trim() === "") {
-        setSearchQuery("");
-      }
-    }
+    if (e.key === "Enter") setIsOpen(false);
   };
 
   const selectSuggestion = (text) => {
+    if (text === "No matches found") return;
     setInputValue(text);
     setSearchQuery(text);
     setIsOpen(false);
-    // Note: If you want suggestions to ALWAYS go home, keep the navigate. 
-    // If you want them to filter the CURRENT page, remove navigate("/") below.
-    // navigate("/"); 
   };
 
   return (
     <div className="flex items-center">
-      {/* Search Icon Trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`p-2.5 rounded-full transition-all duration-300 z-[60] ${
@@ -73,76 +95,61 @@ const SearchBar = () => {
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* Backdrop Blur */}
             <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
               className="fixed inset-0 bg-black/60 backdrop-blur-md z-40"
             />
 
-            {/* Sliding Container */}
             <motion.div
               initial={{ opacity: 0, y: -50, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
               className="absolute left-0 right-0 top-full mt-4 px-4 z-50 flex justify-center"
             >
-              <div className={`w-full max-w-2xl overflow-hidden rounded-[2rem] shadow-2xl border ${
-                isDarkMode ? "bg-gray-900/90 border-gray-700" : "bg-white/90 border-gray-200"
+              <div className={`w-full max-w-2xl overflow-hidden rounded-[2.5rem] shadow-2xl border ${
+                isDarkMode ? "bg-[#0d1117]/90 border-slate-800" : "bg-white/90 border-gray-200"
               } backdrop-blur-xl`}>
                 
-                {/* Input Area */}
-                <div className="relative flex items-center p-6 border-b border-gray-200 dark:border-gray-700">
-                  <FaSearch className="text-amber-500 ml-2" size={20} />
+                <div className="relative flex items-center p-6 border-b border-slate-800/10 dark:border-slate-800/50">
+                  <FaSearch className={isLoading ? "text-amber-500 animate-pulse" : "text-amber-500"} size={20} />
                   <input
                     ref={inputRef}
                     type="text"
                     value={inputValue}
                     onChange={handleSearch}
                     onKeyDown={handleKeyDown}
-                    placeholder="Search for products, brands, or categories..."
-                    className="w-full bg-transparent px-4 py-2 text-lg outline-none dark:text-white placeholder-gray-500 font-medium"
+                    placeholder="Search database..."
+                    className="w-full bg-transparent px-4 py-2 text-lg outline-none dark:text-white placeholder-gray-500 font-bold uppercase tracking-tight"
                   />
-                  {inputValue && (
-                    <button 
-                      onClick={() => {setInputValue(""); setSearchQuery("");}} 
-                      className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
-                    >
-                      <FaTimes />
-                    </button>
-                  )}
                 </div>
 
-                {/* Suggestions Section */}
                 <div className="p-6">
                   <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-4 px-2">
-                    {inputValue ? "Targeting Signal" : "Popular Nodes"}
+                    {isLoading ? "Querying Neural Network..." : "Database Results"}
                   </p>
                   
                   <div className="grid grid-cols-1 gap-1">
-                    {(inputValue ? filteredSuggestions : suggestions).map((item, index) => (
+                    {suggestions.map((item, index) => (
                       <button
                         key={index}
                         onClick={() => selectSuggestion(item)}
-                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all group ${
+                        className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all group ${
                           isDarkMode ? "hover:bg-amber-500/10 text-gray-300" : "hover:bg-amber-50 text-gray-700"
                         }`}
                       >
                         <div className="flex items-center gap-4">
-                          <FaHistory className="text-gray-500 group-hover:text-amber-500" size={14} />
-                          <span className="font-bold text-sm uppercase tracking-tight">{item}</span>
+                          <FaBox className="text-gray-600 group-hover:text-amber-500" size={14} />
+                          <span className="font-black text-xs uppercase tracking-widest">{item}</span>
                         </div>
-                        <FaArrowRight size={12} className="opacity-0 group-hover:opacity-100 text-amber-500 -translate-x-2 group-hover:translate-x-0 transition-all" />
+                        <FaArrowRight size={12} className="opacity-0 group-hover:opacity-100 text-amber-500 transition-all" />
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Footer hint */}
                 <div className={`px-8 py-4 text-[9px] font-black uppercase tracking-widest ${isDarkMode ? "bg-black/40 text-gray-600" : "bg-gray-50 text-gray-400"}`}>
-                  System Status: <span className="text-emerald-500">Live Filtering Active</span> | Press <kbd className="text-amber-500">Enter</kbd> to confirm
+                  Search Engine: <span className="text-amber-500">v2.1 Firestore Sync</span>
                 </div>
               </div>
             </motion.div>

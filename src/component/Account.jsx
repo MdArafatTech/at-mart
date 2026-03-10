@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../provider/AuthProvider";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../context/ThemeContext"; 
 import { 
   FaBox, FaChevronRight, FaHistory, FaUser, FaShieldAlt, 
-  FaDesktop, FaSync, FaEdit, FaSave, FaTimes, FaCamera 
+  FaDesktop, FaSync, FaEdit, FaSave, FaTimes, FaShoppingBag 
 } from "react-icons/fa";
 
 // --- FIREBASE IMPORTS ---
@@ -39,7 +39,6 @@ const Account = () => {
   const [userOrders, setUserOrders] = useState([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
 
-  // --- PROFILE EDIT STATE ---
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -58,11 +57,15 @@ const Account = () => {
   });
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+        navigate("/login");
+        return;
+    };
     setNewName(currentUser.displayName || "");
     setNewPhoto(currentUser.photoURL || "");
 
     setIsLoadingOrders(true);
+    // Real-time listener for orders
     const q = query(
       collection(db, "orders"), 
       where("userId", "==", currentUser.uid),
@@ -80,9 +83,8 @@ const Account = () => {
 
     loadActivityLog();
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, navigate]);
 
-  // --- UPDATE PROFILE LOGIC ---
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setIsUpdating(true);
@@ -103,6 +105,8 @@ const Account = () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     try {
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("userEmail");
       await logout();
       navigate("/");
     } catch (err) {
@@ -137,7 +141,7 @@ const Account = () => {
   const avatarUrl = currentUser.photoURL || `https://ui-avatars.com/api/?name=${currentUser.displayName || 'User'}&background=f59e0b&color=fff`;
 
   return (
-    <div className={`min-h-screen py-10 px-4 transition-colors duration-500 ${isDarkMode ? "bg-[#05070a] text-gray-100" : "bg-orange-50 text-gray-900"}`}>
+    <div className={`min-h-screen py-10 px-4 transition-colors duration-500 mt-15 ${isDarkMode ? "bg-[#05070a] text-gray-100" : "bg-orange-50 text-gray-900"}`}>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-4xl md:text-6xl font-black mb-8 italic uppercase tracking-tighter">
           Command <span className="text-amber-500">Center</span>
@@ -147,7 +151,7 @@ const Account = () => {
         <div className={`flex space-x-8 mb-10 border-b overflow-x-auto no-scrollbar ${isDarkMode ? "border-gray-800" : "border-gray-200"}`}>
           {[
             { id: "profile", label: "Identity", icon: <FaUser /> },
-            { id: "orders", label: "Orders", icon: <FaBox /> },
+            { id: "orders", label: "Acquisitions", icon: <FaBox /> },
             { id: "security", label: "Security", icon: <FaShieldAlt /> },
             { id: "activity", label: "Logs", icon: <FaHistory /> }
           ].map(tab => (
@@ -170,7 +174,6 @@ const Account = () => {
           {/* IDENTITY TAB */}
           {activeTab === "profile" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Profile Card */}
               <div className={`lg:col-span-2 rounded-[2.5rem] p-8 border relative overflow-hidden ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
                 <AnimatePresence mode="wait">
                   {!isEditing ? (
@@ -201,23 +204,11 @@ const Account = () => {
                       <div className="grid md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                           <label className="text-[9px] font-black uppercase opacity-40 ml-2">Display Name</label>
-                          <input 
-                            type="text" 
-                            value={newName} 
-                            onChange={(e) => setNewName(e.target.value)}
-                            className={`w-full px-5 py-4 rounded-2xl border text-sm font-bold outline-none focus:border-amber-500 transition-all ${isDarkMode ? "bg-black border-gray-800" : "bg-gray-50 border-gray-200"}`}
-                            placeholder="Full Name"
-                          />
+                          <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className={`w-full px-5 py-4 rounded-2xl border text-sm font-bold outline-none focus:border-amber-500 transition-all ${isDarkMode ? "bg-black border-gray-800" : "bg-gray-50 border-gray-200"}`} placeholder="Full Name" />
                         </div>
                         <div className="space-y-2">
                           <label className="text-[9px] font-black uppercase opacity-40 ml-2">Avatar URL</label>
-                          <input 
-                            type="text" 
-                            value={newPhoto} 
-                            onChange={(e) => setNewPhoto(e.target.value)}
-                            className={`w-full px-5 py-4 rounded-2xl border text-sm font-bold outline-none focus:border-amber-500 transition-all ${isDarkMode ? "bg-black border-gray-800" : "bg-gray-50 border-gray-200"}`}
-                            placeholder="https://image-link.com"
-                          />
+                          <input type="text" value={newPhoto} onChange={(e) => setNewPhoto(e.target.value)} className={`w-full px-5 py-4 rounded-2xl border text-sm font-bold outline-none focus:border-amber-500 transition-all ${isDarkMode ? "bg-black border-gray-800" : "bg-gray-50 border-gray-200"}`} placeholder="https://image-link.com" />
                         </div>
                       </div>
                       <div className="flex gap-4 pt-4">
@@ -230,7 +221,7 @@ const Account = () => {
                 </AnimatePresence>
               </div>
 
-              {/* Terminal Specs Sidebar */}
+              {/* Sidebar Info */}
               <div className={`rounded-[2.5rem] p-8 border ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
                 <h2 className="text-xs font-black text-emerald-500 mb-8 uppercase tracking-widest flex items-center gap-2"><FaDesktop/> Node Specs</h2>
                 <div className="space-y-6">
@@ -245,109 +236,82 @@ const Account = () => {
             </div>
           )}
 
-       {/* ACQUISITIONS (ORDERS) TAB */}
-{activeTab === "orders" && (
-  <div className={`rounded-[3rem] p-8 border ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
-    <h3 className="text-[10px] font-black uppercase text-amber-500 mb-8 flex items-center gap-2 tracking-[0.3em]">
-      <FaHistory className="animate-pulse" /> transaction_history.log
-    </h3>
-    
-    {isLoadingOrders ? (
-      <div className="py-20 text-center"><FaSync className="animate-spin mx-auto text-amber-500 text-2xl" /></div>
-    ) : userOrders.length === 0 ? (
-      <div className="py-20 text-center opacity-20 italic font-black uppercase tracking-[0.3em]">Zero transaction nodes detected.</div>
-    ) : (
-      <div className="space-y-6">
-        {userOrders.map((order) => (
-          <motion.div 
-            key={order.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className={`p-8 rounded-[2.5rem] border transition-all hover:border-amber-500/30 ${isDarkMode ? "bg-black/20 border-gray-800" : "bg-gray-50 border-gray-200"}`}
-          >
-            {/* TOP BAR: Status & ID */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-6 border-b border-dashed border-gray-800/20">
-              <div className="flex items-center gap-4">
-                <div className="bg-amber-500 text-black p-4 rounded-2xl shadow-lg"><FaBox /></div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-black text-xs tracking-widest uppercase italic">{order.displayId || order.orderId}</p>
-                    <span className={`px-3 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${
-                      order.status === "Delivered" ? "bg-emerald-500/20 text-emerald-500" : "bg-amber-500/20 text-amber-500"
-                    }`}>
-                      {order.status || "Pending"}
-                    </span>
-                  </div>
-                  <p className="text-[9px] font-bold opacity-40 uppercase mt-1">
-                    Authorized: {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : "Syncing..."}
-                  </p>
+          {/* ACQUISITIONS (ORDERS) TAB */}
+          {activeTab === "orders" && (
+            <div className={`rounded-[2rem] p-8 border ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
+              <h2 className="text-2xl font-black italic text-amber-500 mb-8 uppercase tracking-widest">Order Registry</h2>
+              {isLoadingOrders ? (
+                <div className="flex flex-col items-center py-20 animate-pulse">
+                  <FaSync className="animate-spin text-amber-500 mb-4" size={30} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">Syncing with Mainframe...</p>
                 </div>
-              </div>
-              <button 
-                onClick={() => navigate(`/ordertracking/${order.displayId || order.orderId}`)} 
-                className="group flex items-center gap-3 px-6 py-3 bg-white text-black font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-amber-500 transition-all cursor-pointer shadow-xl shadow-black/5"
-              >
-                Track Node <FaChevronRight className="group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-
-            {/* MIDDLE: Product List Preview */}
-            <div className="flex flex-wrap gap-4 mb-6">
-              {order.items?.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3 bg-black/5 dark:bg-white/5 p-2 pr-4 rounded-xl border border-gray-800/10">
-                  <div className="w-8 h-8 flex items-center justify-center bg-amber-500/10 rounded-lg text-[10px]">{item.img || "📦"}</div>
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-black uppercase truncate max-w-[100px]">{item.name}</span>
-                    <span className="text-[7px] font-bold opacity-40">QTY: {item.quantity || 1}</span>
-                  </div>
+              ) : userOrders.length > 0 ? (
+                <div className="space-y-4">
+                  {userOrders.map(order => (
+                    <div key={order.id} className={`p-6 rounded-2xl border flex flex-wrap items-center justify-between gap-4 transition-all hover:border-amber-500/50 ${isDarkMode ? "bg-black/40 border-gray-800" : "bg-gray-50 border-gray-200"}`}>
+                      <div className="flex items-center gap-4">
+                        <div className="bg-amber-500/10 p-4 rounded-xl text-amber-500"><FaShoppingBag size={20} /></div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Serial: #{order.id.slice(0,8)}</p>
+                          <p className="font-bold text-sm uppercase">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-amber-500">${order.totalAmount}</p>
+                        <span className="text-[9px] font-black px-3 py-1 bg-emerald-500/10 text-emerald-500 rounded-full uppercase tracking-tighter">Fulfilled</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="text-center py-20">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-30 mb-6">No Data Entries Found</p>
+                  <Link to="/shop" className="px-10 py-4 bg-amber-500 text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all inline-block">Initiate Acquisition</Link>
+                </div>
+              )}
             </div>
+          )}
 
-            {/* BOTTOM: Shipping Summary & Total */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4">
-              <div className="w-full md:w-auto">
-                <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1 text-rose-500">Destination Coordinate</p>
-                <p className="text-[10px] font-bold uppercase opacity-60 italic">
-                  {order.deliveryAddress?.city}, {order.deliveryAddress?.district}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] font-black italic opacity-40 uppercase tracking-widest">Total Valuation</p>
-                <p className="text-4xl font-black text-amber-500 italic tracking-tighter leading-none">
-                  ${(order.totalAmount || order.total || 0).toFixed(2)}
-                </p>
+          {/* LOGS TAB */}
+          {activeTab === "activity" && (
+            <div className={`rounded-[2rem] p-8 border ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
+              <h2 className="text-2xl font-black italic text-blue-500 mb-8 uppercase tracking-widest">Access Logs</h2>
+              <div className="space-y-4">
+                {activityLogs.map((log, i) => (
+                  <div key={i} className={`p-5 rounded-xl border-l-4 border-blue-500 flex justify-between items-center ${isDarkMode ? "bg-black/40 border-gray-800" : "bg-gray-50 border-gray-200"}`}>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">{log.time}</p>
+                      <p className="text-xs font-bold mt-1 uppercase tracking-tighter">{log.location}</p>
+                    </div>
+                    <p className="text-[9px] font-mono font-bold opacity-40">{log.ip}</p>
+                  </div>
+                ))}
               </div>
             </div>
-          </motion.div>
-        ))}
-      </div>
-    )}
-  </div>
-)}
+          )}
 
-          {/* SECURITY & LOGS remain identical to previous version */}
+          {/* SECURITY TAB */}
           {activeTab === "security" && (
             <div className={`rounded-[2rem] p-8 border ${isDarkMode ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-xl"}`}>
-              <h2 className="text-xl font-black italic text-red-500 mb-6 uppercase tracking-widest">Shield Status</h2>
-              <div className={`p-6 rounded-2xl flex justify-between items-center ${isDarkMode ? "bg-black/40 border border-gray-800" : "bg-gray-50"}`}>
+              <h2 className="text-2xl font-black italic text-red-500 mb-6 uppercase tracking-widest">Shield Status</h2>
+              <div className={`p-8 rounded-2xl flex justify-between items-center ${isDarkMode ? "bg-black/40 border border-gray-800" : "bg-gray-50"}`}>
                 <div>
                   <p className="font-black text-xs uppercase tracking-widest">MFA Verification</p>
-                  <p className="text-[10px] font-bold opacity-40 uppercase mt-1">Secure link active.</p>
+                  <p className="text-[10px] font-bold opacity-40 uppercase mt-1">Direct Firebase auth-link active.</p>
                 </div>
-                <span className={`text-[10px] font-black uppercase italic ${currentUser.emailVerified ? "text-emerald-500" : "text-amber-500"}`}>
-                  {currentUser.emailVerified ? "ACTIVE" : "INCOMPLETE"}
+                <span className={`text-[10px] font-black uppercase italic px-4 py-2 rounded-lg ${currentUser.emailVerified ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
+                  {currentUser.emailVerified ? "PROTOCOL: ACTIVE" : "PROTOCOL: PENDING"}
                 </span>
               </div>
             </div>
           )}
 
-          {/* LOGOUT */}
+          {/* LOGOUT BUTTON */}
           <div className="mt-16 flex justify-center">
             <motion.button
               whileHover={{ scale: 1.03, letterSpacing: "0.1em" }}
-              whileTap={{ scale: 0.6 }}
-              onClick={() => setTimeout(handleLogout, 800)}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleLogout}
               className={`px-14 py-5 rounded-2xl cursor-pointer font-black tracking-[0.3em] uppercase transition-all shadow-xl text-[14px] ${
                 isDarkMode 
                   ? "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white" 

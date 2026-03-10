@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaSearch, FaChevronRight, FaTrash, FaExclamationTriangle, FaCloud } from "react-icons/fa";
+import { FaSearch, FaChevronRight, FaTrash, FaExclamationTriangle, FaCloud, FaUser, FaTag, FaCalendarAlt } from "react-icons/fa";
 import { motion, AnimatePresence } from 'framer-motion';
 // FIREBASE TOOLS
 import { db } from '../firebase/Firebase'; 
@@ -8,62 +8,46 @@ import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } fro
 
 const Orders = ({ isDarkMode }) => {
   const [allOrders, setAllOrders] = useState([]);
-  const [filteredOrders, setFilteredOrders] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All Orders");
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
 
   // --- 1. REAL-TIME CLOUD LISTENER ---
   useEffect(() => {
-    // Reference 'orders' collection (matching PaymentPage commitment)
     const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({
-        id: doc.id, // Firebase Internal ID for updates
+        id: doc.id,
         ...doc.data()
       }));
       setAllOrders(ordersData);
     });
-
     return () => unsubscribe(); 
   }, []);
 
-  // --- 2. SEARCH & FILTER LOGIC ---
-  useEffect(() => {
-    let result = [...allOrders];
+  // --- 2. LOGIC: DERIVED FILTERING ---
+  const filteredOrders = allOrders.filter(o => {
+    const matchesStatus = filterStatus === "All Orders" || o.status === filterStatus;
+    const queryText = searchQuery.toLowerCase().trim();
+    const orderId = (o.orderId || "").toLowerCase();
+    const customerName = (o.customerName || o.customer?.fullName || "").toLowerCase();
+    const matchesSearch = orderId.includes(queryText) || customerName.includes(queryText);
+    return matchesStatus && matchesSearch;
+  });
 
-    if (filterStatus !== "All Orders") {
-      result = result.filter(o => o.status === filterStatus);
-    }
-
-    if (searchQuery.trim() !== "") {
-      const queryText = searchQuery.toLowerCase().trim();
-      result = result.filter(o => {
-        const orderId = o.orderId?.toLowerCase() || "";
-        const customerName = (o.customerName || o.customer?.fullName || "").toLowerCase();
-        return orderId.includes(queryText) || customerName.includes(queryText);
-      });
-    }
-
-    setFilteredOrders(result);
-  }, [filterStatus, searchQuery, allOrders]);
-
-  // --- 3. CLOUD UPDATE STATUS ---
+  // --- 3. CLOUD ACTIONS ---
   const updateStatus = async (firebaseId, newStatus) => {
     try {
       const orderRef = doc(db, "orders", firebaseId);
       await updateDoc(orderRef, { status: newStatus });
-      // UI updates automatically via onSnapshot!
     } catch (err) {
       console.error("Transmission Error:", err);
       alert("Terminal Error: Cloud update failed.");
     }
   };
 
-  // --- 4. CLOUD DELETE ---
   const deleteOrder = async (firebaseId) => {
-    if (window.confirm("PERMANENTLY purge this record from Cloud Storage?")) {
+    if (window.confirm("PERMANENTLY purge this record?")) {
       try {
         await deleteDoc(doc(db, "orders", firebaseId));
       } catch (err) {
@@ -80,133 +64,146 @@ const Orders = ({ isDarkMode }) => {
   };
 
   return (
-    <div className="space-y-8 pb-20 max-w-[1600px] mx-auto p-6 animate-in fade-in duration-700">
+    <div className={`min-h-screen p-4 md:p-8 space-y-8 pb-20 max-w-[1600px] mx-auto transition-colors duration-500 ${isDarkMode ? "bg-black text-white" : "bg-slate-50 text-slate-900"}`}>
       
-      {/* HEADER & SEARCH */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      {/* HEADER SECTION */}
+      <header className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div>
-          <h1 className={`text-4xl font-black uppercase tracking-tighter italic ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+          <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic">
             Fleet <span className="text-amber-500">Records</span>
           </h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
             <FaCloud className="text-sky-500 animate-pulse" /> Global Transmission Feed Active
           </p>
         </div>
 
-        <div className="relative group w-full lg:w-96">
+        <div className="relative group w-full xl:w-96">
           <input 
             type="text"
-            placeholder="Search Protocol ID or Client..."
+            placeholder="Search Protocol ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full p-5 pl-14 rounded-2xl text-[11px] font-black outline-none border transition-all tracking-widest uppercase ${
+            className={`w-full p-4 pl-12 rounded-2xl text-[11px] font-black outline-none border transition-all tracking-widest uppercase ${
               isDarkMode 
               ? "bg-[#0d1117] border-slate-800 text-white focus:border-amber-500" 
-              : "bg-white border-slate-200 shadow-xl focus:border-amber-500"
+              : "bg-white border-slate-200 shadow-lg focus:border-amber-500"
             }`}
           />
-          <FaSearch className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+          <FaSearch className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
         </div>
-      </div>
+      </header>
 
       {/* FILTER TABS */}
-      <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+      <nav className="flex gap-2 overflow-x-auto pb-2 no-scrollbar scroll-smooth">
         {['All Orders', 'Pending', 'Verified', 'Shipped', 'Delivered'].map((status) => (
           <button 
             key={status} 
             onClick={() => setFilterStatus(status)}
-            className={`px-8 py-4 cursor-pointer rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 flex-shrink-0 ${
+            className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border-2 flex-shrink-0 ${
               filterStatus === status 
-              ? 'bg-amber-500 border-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
-              : isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700' : 'bg-white border-slate-100 text-slate-400'
+              ? 'bg-amber-500 border-amber-500 text-black shadow-lg scale-95' 
+              : isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-white border-slate-100 text-slate-400'
             }`}
           >
             {status}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {/* TABLE */}
-      <div className={`rounded-[3rem] border overflow-hidden ${
-        isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white shadow-2xl border-transparent"
-      }`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[1000px]">
-            <thead className={`text-[10px] font-black uppercase text-slate-500 border-b ${
-              isDarkMode ? "bg-black/20 border-slate-800" : "bg-slate-50 border-slate-100"
-            }`}>
-              <tr>
-                <th className="px-10 py-8 tracking-[0.2em]">Transmission ID</th>
-                <th className="px-10 py-8 tracking-[0.2em]">Client Node</th>
-                <th className="px-10 py-8 tracking-[0.2em]">Value</th>
-                <th className="px-10 py-8 tracking-[0.2em]">Status Protocol</th>
-                <th className="px-10 py-8 text-center tracking-[0.2em]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/10">
-              <AnimatePresence mode='popLayout'>
-                {filteredOrders.length > 0 ? (
-                  filteredOrders.map((order) => (
-                    <motion.tr 
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      key={order.id}
-                      className="hover:bg-amber-500/5 transition-all group"
+      {/* RESPONSIVE GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+        <AnimatePresence mode='popLayout'>
+          {filteredOrders.length > 0 ? (
+            filteredOrders.map((order) => (
+              <motion.div
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                key={order.id}
+                className={`relative group p-6 rounded-[2rem] border transition-all hover:shadow-2xl ${
+                  isDarkMode 
+                  ? "bg-[#0d1117] border-slate-800 hover:border-amber-500/50" 
+                  : "bg-white border-slate-100 shadow-sm hover:border-amber-200"
+                }`}
+              >
+                {/* Order ID & Date */}
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <span className="text-[10px] font-bold opacity-40 uppercase tracking-tighter flex items-center gap-1 mb-1">
+                      <FaTag size={8}/> Transmission ID
+                    </span>
+                    <h3 className="text-xl font-black text-amber-500 italic tracking-tighter uppercase">
+                      {order.orderId}
+                    </h3>
+                  </div>
+                  <div className={`text-[10px] px-3 py-1 rounded-full font-black uppercase ${statusStyles[order.status || "Pending"]}`}>
+                    {order.status || "Pending"}
+                  </div>
+                </div>
+
+                {/* Customer Info */}
+                <div className="space-y-3 mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-500/10 flex items-center justify-center text-slate-500">
+                      <FaUser size={12} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black uppercase leading-none">{order.customerName}</p>
+                      <p className="text-[9px] font-medium opacity-40 truncate max-w-[150px]">{order.customerEmail}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 opacity-60">
+                    <FaCalendarAlt size={10} className="ml-2"/>
+                    <p className="text-[9px] font-bold uppercase tracking-widest">
+                      {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : 'Syncing...'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Amount */}
+                <div className="mb-6">
+                  <p className="text-3xl font-black italic text-amber-500 tracking-tighter">
+                    ${order.totalAmount || order.total}
+                  </p>
+                </div>
+
+                {/* Actions Section */}
+                <div className="pt-4 border-t border-slate-500/10 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <select 
+                      value={order.status || "Pending"}
+                      onChange={(e) => updateStatus(order.id, e.target.value)}
+                      className={`flex-1 text-[9px] cursor-pointer font-black uppercase p-3 rounded-xl border-2 outline-none transition-all ${statusStyles[order.status || "Pending"]}`}
                     >
-                      <td className="px-10 py-8">
-                        <p className="font-black text-amber-500 italic uppercase text-lg tracking-tighter group-hover:scale-105 transition-transform origin-left">{order.orderId}</p>
-                        <p className="text-[8px] font-black opacity-30 mt-1 uppercase tracking-widest">
-                          {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleString() : 'Processing...'}
-                        </p>
-                      </td>
-                      <td className="px-10 py-8">
-                        <p className="text-[11px] font-black uppercase italic">{order.customerName}</p>
-                        <p className="text-[9px] font-bold opacity-40 mt-1">{order.customerEmail}</p>
-                      </td>
-                      <td className="px-10 py-8 font-black text-2xl italic text-amber-500 tracking-tighter">
-                        ${order.totalAmount || order.total}
-                      </td>
-                      <td className="px-10 py-8">
-                        <select 
-                          value={order.status || "Pending"}
-                          onChange={(e) => updateStatus(order.id, e.target.value)}
-                          className={`text-[9px] cursor-pointer font-black uppercase px-5 py-3 rounded-xl border-2 outline-none transition-all ${statusStyles[order.status || "Pending"]}`}
-                        >
-                          {Object.keys(statusStyles).map(s => <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-10 py-8">
-                        <div className="flex items-center justify-center gap-4">
-                          <button 
-                            onClick={() => navigate(`/ordertracking/${order.orderId}`)} 
-                            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-800 text-white hover:bg-amber-500 hover:text-black transition-all cursor-pointer"
-                          >
-                            <FaChevronRight size={14} />
-                          </button>
-                          <button 
-                            onClick={() => deleteOrder(order.id)} 
-                            className="w-12 h-12 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all cursor-pointer"
-                          >
-                            <FaTrash size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="py-40 text-center">
-                       <FaExclamationTriangle className="mx-auto text-slate-800/20 mb-6" size={50} />
-                       <p className="text-[10px] font-black uppercase opacity-20 tracking-[0.5em]">Zero cloud records detected in this frequency</p>
-                    </td>
-                  </tr>
-                )}
-              </AnimatePresence>
-            </tbody>
-          </table>
-        </div>
+                      {Object.keys(statusStyles).map(s => <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>)}
+                    </select>
+                    
+                    <button 
+                      onClick={() => deleteOrder(order.id)} 
+                      className="p-3 bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
+                    >
+                      <FaTrash size={12} />
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={() => navigate(`/ordertracking/${order.orderId}`)} 
+                    className="w-full py-3 flex items-center justify-center gap-2 rounded-xl bg-slate-800 text-white hover:bg-amber-500 hover:text-black font-black text-[10px] uppercase tracking-widest transition-all"
+                  >
+                    View Details <FaChevronRight size={10} />
+                  </button>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="col-span-full py-20 text-center">
+              <FaExclamationTriangle className="mx-auto text-slate-800/20 mb-6" size={50} />
+              <p className="text-[10px] font-black uppercase opacity-20 tracking-[0.5em]">Zero cloud records in frequency</p>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import Customers from "./views/Customers";
 import AdminChat from "./views/AdminChat";
 import Products from "./views/Products";
 import Settings from "./views/Settings";
+import Return from "./views/Return";
 
 const Dashboard = () => {
   const { isDarkMode, toggleTheme } = useTheme();
@@ -177,6 +178,7 @@ const Dashboard = () => {
       case "adminchat": return <AdminChat {...props} />;
       case "settings":  return <Settings {...props} />; 
         case "products":  return <Products {...props} />;
+        case "return":    return <Return {...props} />;
 
       default:          return <Overview {...props} />;
     }

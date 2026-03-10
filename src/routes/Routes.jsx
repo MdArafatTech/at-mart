@@ -30,6 +30,10 @@ import Sidebar from "../views/Sidebar";
 import LiveChat from "../chat/LiveChat";
 import AdminChat from "../views/AdminChat";
 import Products from "../views/Products";
+import UserOrders from "../pages/UserOrder";
+import ReturnProgress from "../component/ReturnProgress";
+import Return from "../views/Return";
+import ResetPassword from "../component/ResetPassword";
 
 const Routes = createBrowserRouter([
   {
@@ -146,6 +150,23 @@ const Routes = createBrowserRouter([
         path: "/products",
         element: <Products></Products>
       },
+   
+      {
+        path: "/userorder",
+        element: <UserOrders></UserOrders>
+      },
+      {
+        path: "/returnprogress",
+        element:<ReturnProgress></ReturnProgress>
+      },
+      {
+        path: "/return",
+        element: <Return></Return>
+      },
+      {
+        path: "/resetpassword",
+        element: <ResetPassword></ResetPassword>
+      }
     ],
   },
 ]);

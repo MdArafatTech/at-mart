@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
 import { useCart } from "../context/CartContext";
 import { useSearch } from "../context/SearchContext";
+
 // --- FIREBASE INFRASTRUCTURE ---
 import { db } from "../firebase/Firebase";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { 
-  FaMicrochip, FaSearch, FaTimes, FaTrash, 
-  FaShoppingCart, FaGamepad, FaMobileAlt, 
-  FaHdd, FaHeadphones, FaKeyboard, FaCheckCircle, FaMemory 
+  FaMicrochip, FaGamepad, FaMobileAlt, 
+  FaHdd, FaHeadphones, FaKeyboard, FaCheckCircle, 
+  FaMemory, FaShoppingCart 
 } from "react-icons/fa";
 
 // Dynamic Icon Mapping
@@ -28,11 +29,10 @@ const getProductIcon = (category) => {
 const Shop = () => {
   const { isDarkMode } = useTheme();
   const { searchQuery } = useSearch();
-  const { addToCart, cartItems, removeFromCart } = useCart();
+  const { addToCart } = useCart(); // Keep this to manage the global cart state
   
-  const [dbProducts, setDbProducts] = useState([]); // Firestore Data
+  const [dbProducts, setDbProducts] = useState([]); 
   const [activeCategory, setActiveCategory] = useState("All");
-  const [isCartOpen, setIsCartOpen] = useState(false);
   const [sortBy, setSortBy] = useState("default");
   const [loading, setLoading] = useState(true);
 
@@ -137,7 +137,7 @@ const Shop = () => {
                 >
                   <ShopProductCard 
                     product={product} 
-                    onAdd={() => { addToCart(product); setIsCartOpen(true); }}
+                    onAdd={() => addToCart(product)} // Add to cart quietly
                     isDarkMode={isDarkMode}
                   />
                 </motion.div>
@@ -146,14 +146,6 @@ const Shop = () => {
           </AnimatePresence>
         )}
       </section>
-
-      <CartDrawer 
-        isOpen={isCartOpen} 
-        onClose={() => setIsCartOpen(false)} 
-        cartItems={cartItems} 
-        remove={removeFromCart} 
-        isDarkMode={isDarkMode} 
-      />
     </div>
   );
 };
@@ -169,7 +161,7 @@ const ShopProductCard = ({ product, onAdd, isDarkMode }) => (
         <img src={product.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={product.name} />
       ) : (
         <div className="group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 text-slate-500 group-hover:text-amber-500">
-          {getProductIcon(product.category || product.cat)}
+          {getProductIcon(product.category)}
         </div>
       )}
       
@@ -184,7 +176,7 @@ const ShopProductCard = ({ product, onAdd, isDarkMode }) => (
       <div className="flex justify-between items-start">
         <div className="max-w-[70%]">
           <h4 className="text-[8px] font-black uppercase text-amber-500 mb-1 tracking-widest">
-            {product.category || product.cat}
+            {product.category}
           </h4>
           <h3 className="font-black text-[14px] uppercase leading-tight line-clamp-2">
             {product.name}
@@ -206,66 +198,10 @@ const ShopProductCard = ({ product, onAdd, isDarkMode }) => (
         onClick={onAdd} 
         className="px-5 py-3 bg-amber-500 text-black font-black text-[9px] uppercase rounded-xl transition-all shadow-lg cursor-pointer flex items-center gap-2 hover:bg-white active:scale-95"
       >
-        Buy Now <FaShoppingCart />
+        Add To Cart <FaShoppingCart />
       </button>
     </div>
   </div>
 );
-
-// CartDrawer remains similar but ensured logic handles Firebase object IDs
-const CartDrawer = ({ isOpen, onClose, cartItems, remove, isDarkMode }) => {
-  const total = cartItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
-
-  return (
-    <>
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            onClick={onClose} 
-            className="fixed inset-0 bg-black/90 backdrop-blur-md z-[999]" 
-          />
-        )}
-      </AnimatePresence>
-      <div className={`fixed inset-y-0 right-0 z-[1000] w-full max-w-sm transition-transform duration-500 transform ${
-        isOpen ? "translate-x-0" : "translate-x-full"
-      } ${isDarkMode ? "bg-[#0d1117] border-l border-slate-800" : "bg-white"} shadow-2xl`}>
-        <div className="p-8 h-full flex flex-col">
-          <div className="flex justify-between items-center mb-10">
-            <h2 className="text-2xl font-black italic uppercase tracking-tighter">Your Loadout</h2>
-            <button onClick={onClose} className="p-2 text-slate-500 hover:text-amber-500 transition-colors"><FaTimes size={20}/></button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
-            {cartItems.map((item, idx) => (
-              <div key={idx} className="flex gap-4 items-center bg-slate-800/10 p-4 rounded-2xl border border-transparent hover:border-amber-500/20">
-                <div className="h-12 w-12 bg-amber-500 text-black rounded-xl flex items-center justify-center text-xl">
-                  {getProductIcon(item.category || item.cat)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-[10px] font-black uppercase truncate">{item.name}</h4>
-                  <p className="text-amber-500 font-black italic">${item.price}</p>
-                </div>
-                <button onClick={() => remove(item.id)} className="text-rose-500 hover:bg-rose-500/10 p-2 rounded-lg"><FaTrash size={14}/></button>
-              </div>
-            ))}
-          </div>
-
-          <div className="pt-8 border-t border-slate-800/20 mt-6">
-            <div className="flex justify-between font-black mb-6">
-              <span className="text-[10px] uppercase opacity-40">Total Credits</span>
-              <span className="text-4xl text-amber-500 leading-none">${total.toLocaleString()}</span>
-            </div>
-            <button className="w-full py-5 bg-amber-500 text-black font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-white transition-all shadow-xl active:scale-95">
-              Execute Order
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-};
 
 export default Shop;

@@ -233,18 +233,15 @@
 
 
 
-
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../provider/AuthProvider"; 
-import { db } from "../firebase/Firebase"; // Ensure this path is correct
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { 
-  FaTrash, FaPlus, FaMinus, FaShieldAlt, 
-  FaFileInvoiceDollar, FaShoppingCart, FaLock, FaSync, FaCloudUploadAlt
+  FaTrash, FaShieldAlt, FaFileInvoiceDollar, 
+  FaShoppingCart, FaLock, FaCloudUploadAlt, FaArrowRight
 } from "react-icons/fa";
 
 const CartPage = () => {
@@ -256,69 +253,47 @@ const CartPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Local state for cloud sync
-  const [isSyncing, setIsSyncing] = useState(false);
-
   // --- CALCULATIONS ---
-  const subtotal = cartItems.reduce((acc, item) => acc + (item.price || 0), 0);
+  const subtotal = cartItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
   const discountAmount = subtotal * (discount || 0); 
   const discountedSubtotal = subtotal - discountAmount;
   const tax = discountedSubtotal * 0.08; 
   const shipping = subtotal > 500 || subtotal === 0 ? 0 : 25; 
   const total = discountedSubtotal + tax + shipping;
 
-  // --- FIREBASE CHECKOUT LOGIC ---
-  const handleCheckout = async () => {
+  // --- NAVIGATION HANDOFF (NO FIRESTORE HERE) ---
+  const handleCheckout = () => {
     if (!isLoggedIn) {
+      // Redirect to login if not authenticated
       navigate("/login", { state: { from: location.pathname } });
       return;
     }
 
-    setIsSyncing(true);
+    // Package data to pass to Payment Page
+    const orderPayload = {
+      userId: currentUser.uid,
+      userEmail: currentUser.email || "anonymous",
+      userName: currentUser.displayName || "Agent",
+      items: cartItems.map(item => ({
+        id: item.id || item.cartId || "unidentified_node",
+        name: item.name || "Unknown Hardware",
+        price: Number(item.price) || 0,
+        img: item.img || "📦",
+        tech: item.tech || "Standard Specs",
+        quantity: 1
+      })),
+      summary: {
+        subtotal: Number(subtotal.toFixed(2)),
+        tax: Number(tax.toFixed(2)),
+        shipping: Number(shipping.toFixed(2)),
+        total: Number(total.toFixed(2))
+      }
+    };
 
-    try {
-      // 1. Sanitize Payload (Prevents the 'undefined' Error)
-      const orderPayload = {
-        userId: currentUser.uid,
-        userEmail: currentUser.email || "anonymous",
-        userName: currentUser.displayName || "Agent",
-        items: cartItems.map(item => ({
-          id: item.id || item.cartId || "unidentified_node",
-          name: item.name || "Unknown Hardware",
-          price: Number(item.price) || 0,
-          img: item.img || "📦", // Fallback to emoji if img is undefined
-          tech: item.tech || "Standard Specs"
-        })),
-        summary: {
-          subtotal: Number(subtotal.toFixed(2)),
-          tax: Number(tax.toFixed(2)),
-          shipping: Number(shipping.toFixed(2)),
-          total: Number(total.toFixed(2))
-        },
-        status: "pending",
-        createdAt: serverTimestamp() // Official Firestore Timestamp
-      };
-
-      // 2. Deploy to Firestore
-      const docRef = await addDoc(collection(db, "orders"), orderPayload);
-
-      // 3. Clear Cart and Redirect
-      setTimeout(() => {
-        setIsSyncing(false);
-        clearCart();
-        navigate("/paymentpage", { 
-          state: { 
-            orderId: docRef.id,
-            orderData: orderPayload 
-          } 
-        });
-      }, 1000);
-
-    } catch (error) {
-      console.error("DEPLOYMENT FAILURE:", error);
-      alert("Cloud Sync Error: Check your connection or database permissions.");
-      setIsSyncing(false);
-    }
+    // Move to Payment Page with the data
+    navigate("/paymentpage", { 
+      state: { orderData: orderPayload } 
+    });
   };
 
   // --- EMPTY CART VIEW ---
@@ -385,7 +360,7 @@ const CartPage = () => {
                     <h3 className="text-lg font-black uppercase italic tracking-tighter">{item.name}</h3>
                     <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">{item.tech || "Premium Node"}</p>
                     <div className="mt-4 flex items-center justify-center sm:justify-start gap-4">
-                       <span className="text-amber-500 font-black italic text-xl">${item.price}</span>
+                       <span className="text-amber-500 font-black italic text-xl">${Number(item.price).toFixed(2)}</span>
                        <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase rounded-full flex items-center gap-1">
                          <FaShieldAlt size={8}/> Verified Node
                        </span>
@@ -434,21 +409,23 @@ const CartPage = () => {
 
               <button 
                 onClick={handleCheckout}
-                disabled={isSyncing}
                 className={`w-full py-5 font-black uppercase text-xs rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer group ${
                   isLoggedIn 
                     ? "bg-amber-500 text-black hover:bg-amber-400 active:scale-95" 
                     : "bg-rose-600 text-white hover:bg-rose-700"
-                } ${isSyncing ? "opacity-70 cursor-wait" : ""}`}
+                }`}
               >
-                {isSyncing ? (
-                  <FaSync className="animate-spin" />
-                ) : !isLoggedIn ? (
-                  <FaLock />
+                {!isLoggedIn ? (
+                  <>
+                    <FaLock /> Login to Checkout
+                  </>
                 ) : (
-                  <FaCloudUploadAlt className="group-hover:-translate-y-1 transition-transform" />
+                  <>
+                    <FaCloudUploadAlt className="group-hover:-translate-y-1 transition-transform" /> 
+                    Deploy Order
+                    <FaArrowRight className="text-[8px] opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </>
                 )}
-                {isSyncing ? "Syncing Arsenal..." : isLoggedIn ? "Deploy Order" : "Login to Checkout"}
               </button>
             </div>
           </div>

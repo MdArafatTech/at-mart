@@ -34,6 +34,8 @@ const Header = () => {
     { name: "New Arrivals", path: "/newarrivals" },
     { name: "Sale", path: "/sale", highlight: true },
     { name: "About", path: "/about" },
+    { name: "Order", path: "/userorder" },
+    { name: "Returns", path: "/returnprogress" },
   ];
 
   useEffect(() => {

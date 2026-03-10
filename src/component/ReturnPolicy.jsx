@@ -10,6 +10,7 @@ import {
 
 // Ensure this path matches your file structure exactly
 import returnHubImage from '../assets/RETURN-01.jpg'; 
+import ReturnProgress from "./ReturnProgress";
 
 const ReturnPolicy = () => {
   const { isDarkMode } = useTheme();
@@ -183,6 +184,26 @@ const ReturnPolicy = () => {
               </p>
             </motion.div>
           </div>
+
+
+
+
+
+
+<ReturnProgress></ReturnProgress>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
           {/* SIDEBAR LOGISTICS */}
           <div className="space-y-10">

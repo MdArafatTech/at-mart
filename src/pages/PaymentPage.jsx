@@ -1,4 +1,14 @@
 import React, { useState, useEffect } from "react";
+
+
+
+
+
+
+
+
+
+
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
@@ -193,6 +203,16 @@ if (orderConfirmed) {
              <h1 className="text-6xl font-black italic tracking-tighter uppercase leading-none">Checkout <span className="text-amber-500">Portal</span></h1>
           </header>
 
+
+
+
+
+
+
+
+
+
+
           {/* SHIPPING FORM */}
           <div className={`p-10 rounded-[3rem] border ${isDarkMode ? "bg-[#0d1117] border-slate-800" : "bg-white shadow-xl border-slate-100"}`}>
             <h3 className="text-[10px] font-black uppercase text-amber-500 mb-8 flex items-center gap-2 tracking-widest">
@@ -209,6 +229,19 @@ if (orderConfirmed) {
               ))}
             </div>
           </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
           {/* PAYMENT METHODS */}
         <section className={`p-10 rounded-[3rem] border transition-all duration-500 ${
@@ -256,6 +289,11 @@ if (orderConfirmed) {
     ))}
   </div>
 
+
+
+
+
+
   {/* DYNAMIC INPUT TERMINAL */}
   <AnimatePresence mode="wait">
     <motion.div
@@ -302,7 +340,10 @@ if (orderConfirmed) {
           <input readOnly value="0x71C7656EC7ab88b098defB751B7401B5f6d8976F" className={`w-full p-4 rounded-xl text-[9px] font-mono border outline-none opacity-60 ${isDarkMode ? "bg-black border-slate-800" : "bg-white"}`} />
           <p className="text-[8px] font-bold opacity-30 text-center uppercase tracking-widest italic">Send exact amount to the node address above to initialize sync.</p>
         </div>
+        
       )}
+
+      
 
       {paymentMethod === 'bank' && (
         <div className="text-center py-4">
@@ -312,6 +353,18 @@ if (orderConfirmed) {
       )}
     </motion.div>
   </AnimatePresence>
+
+
+
+
+
+
+
+
+
+
+
+
 </section>
 
 
@@ -362,3 +415,19 @@ if (orderConfirmed) {
 };
 
 export default PaymentPage;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
